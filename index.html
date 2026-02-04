@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - True Interpretation</title>
+    <title>Chord Lab - Strict Components</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -11,7 +11,7 @@
         button.selected { background: #007bff; font-weight: bold; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
         #display { background: #000; padding: 15px; border-radius: 10px; min-height: 200px; margin-bottom: 20px; border: 1px solid #444; }
-        .chord-list { max-height: 240px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
+        .chord-list { max-height: 220px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
         .chord-item { display: block; font-size: 1.25rem; font-weight: bold; color: #00d1b2; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 4px; }
         .interval-info { font-size: 1.1rem; color: #ffa502; font-weight: bold; }
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
@@ -19,7 +19,7 @@
 </head>
 <body>
     <div id="display">
-        <div class="label">INTERPRETATIONS (WITH TENSIONS):</div>
+        <div class="label">INTERPRETATIONS:</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
         <div class="label">INTERVALS FROM BASS:</div>
         <div id="interval-out" class="interval-info"></div>
@@ -44,29 +44,6 @@
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
-        const analyzeWithTensions = (root, notes, currentBass) => {
-            // Tonal.jsのdetectをベースに、不足している音をテンションとして補完する
-            const results = Tonal.Chord.detect(notes, { assumeRoot: root });
-            
-            if (results.length > 0) return results[0]; // 既製品があればそれを返す
-
-            // ライブラリで見つからない場合、サブセットから基本和音を探し、残りをadd/tension表記にする
-            for (let i = 0; i < notes.length; i++) {
-                const subset = notes.filter((_, idx) => idx !== i);
-                if (subset.length < 3) continue;
-                
-                const baseChords = Tonal.Chord.detect(subset, { assumeRoot: root });
-                if (baseChords.length > 0) {
-                    const extraNote = notes[i];
-                    let diff = rawNotes.indexOf(extraNote) - rawNotes.indexOf(root);
-                    if (diff < 0) diff += 12;
-                    const tension = semitoneToInterval[diff].replace("b2", "♭9").replace("2", "9").replace("b5", "♭5").replace("b6", "♭13");
-                    return `${baseChords[0]}add${tension}`;
-                }
-            }
-            return null;
-        };
-
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             const ivOut = document.getElementById('interval-out');
@@ -76,40 +53,54 @@
                 render(); return;
             }
 
-            if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
+            if (!bassNote || !selected.includes(bassNote)) {
+                bassNote = selected[0];
+            }
+
             const upper = selected.filter(n => n !== bassNote);
             let candidates = [];
 
             if (typeof Tonal !== 'undefined') {
-                // 1. 全音を対象に各音をルートとして解析（add表記対応）
+                // 1. 全構成音（selected）を使った解析
                 selected.forEach(r => {
-                    const res = analyzeWithTensions(r, selected, bassNote);
-                    if (res) {
-                        if (Tonal.Note.get(r).chroma === Tonal.Note.get(bassNote).chroma) candidates.push(res);
-                        else candidates.push(`${res}/${bassNote}`);
-                    }
+                    Tonal.Chord.detect(selected, { assumeRoot: r }).forEach(name => {
+                        const info = Tonal.Chord.get(name);
+                        if (Tonal.Note.get(info.tonic).chroma === Tonal.Note.get(bassNote).chroma) {
+                            candidates.push(info.symbol);
+                        } else {
+                            candidates.push(`${info.symbol} / ${bassNote}`);
+                        }
+                    });
                 });
 
-                // 2. 上部構造のみでの解析
+                // 2. 上部構造（upper）のみを使った解析（ベース音を完全に除外）
                 if (upper.length >= 3) {
                     upper.forEach(r => {
-                        const res = analyzeWithTensions(r, upper, bassNote);
-                        if (res) candidates.push(`${res}/${bassNote}`);
+                        Tonal.Chord.detect(upper, { assumeRoot: r }).forEach(u => {
+                            candidates.push(`${u} / ${bassNote}`);
+                        });
                     });
                 }
             }
 
-            const uniqueCandidates = [...new Set(candidates)];
+            const uniqueCandidates = [...new Set(candidates)].filter(c => c && !c.startsWith(" /"));
+
             if (uniqueCandidates.length > 0) {
                 out.innerHTML = uniqueCandidates.map(c => `<div class="chord-item">${unify(c)}</div>`).join('');
             } else {
-                out.innerHTML = `<div class="chord-item">No Interpretation found</div>`;
+                // 名前がない場合はベースからの度数構成を表示
+                const ivs = upper.map(n => {
+                    let diff = rawNotes.indexOf(n) - rawNotes.indexOf(bassNote);
+                    if (diff < 0) diff += 12;
+                    return semitoneToInterval[diff];
+                }).join(',');
+                out.innerHTML = `<div class="chord-item">${unify(bassNote)}(${ivs})</div>`;
             }
 
             ivOut.innerText = upper.map(n => {
-                let d = rawNotes.indexOf(n) - rawNotes.indexOf(bassNote);
-                if (d < 0) d += 12;
-                return `${unify(n)}:${unify(semitoneToInterval[d])}`;
+                let diff = rawNotes.indexOf(n) - rawNotes.indexOf(bassNote);
+                if (diff < 0) diff += 12;
+                return `${unify(n)}:${unify(semitoneToInterval[diff])}`;
             }).join(' | ');
 
             render();
