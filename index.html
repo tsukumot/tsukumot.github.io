@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Strict Components</title>
+    <title>Chord Lab - Pure Components</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -19,7 +19,7 @@
 </head>
 <body>
     <div id="display">
-        <div class="label">INTERPRETATIONS:</div>
+        <div class="label">INTERPRETATIONS FROM SELECTED NOTES ONLY:</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
         <div class="label">INTERVALS FROM BASS:</div>
         <div id="interval-out" class="interval-info"></div>
@@ -47,24 +47,22 @@
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             const ivOut = document.getElementById('interval-out');
-            
             if (selected.length === 0) {
                 out.innerText = "---"; ivOut.innerText = "---";
                 render(); return;
             }
 
-            if (!bassNote || !selected.includes(bassNote)) {
-                bassNote = selected[0];
-            }
-
+            if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
             const upper = selected.filter(n => n !== bassNote);
+            
             let candidates = [];
-
             if (typeof Tonal !== 'undefined') {
-                // 1. 全構成音（selected）を使った解析
+                // 「選択された音（selected）」の中にある音だけをルートとして検討する
                 selected.forEach(r => {
-                    Tonal.Chord.detect(selected, { assumeRoot: r }).forEach(name => {
+                    const found = Tonal.Chord.detect(selected, { assumeRoot: r });
+                    found.forEach(name => {
                         const info = Tonal.Chord.get(name);
+                        // ベース音が和音のルートと一致するかで表記を分ける
                         if (Tonal.Note.get(info.tonic).chroma === Tonal.Note.get(bassNote).chroma) {
                             candidates.push(info.symbol);
                         } else {
@@ -73,12 +71,11 @@
                     });
                 });
 
-                // 2. 上部構造（upper）のみを使った解析（ベース音を完全に除外）
-                if (upper.length >= 3) {
+                // 上部構造のみの解析においても、上部構造に含まれる音のみをルートとする
+                if (upper.length > 0) {
                     upper.forEach(r => {
-                        Tonal.Chord.detect(upper, { assumeRoot: r }).forEach(u => {
-                            candidates.push(`${u} / ${bassNote}`);
-                        });
+                        const foundUpper = Tonal.Chord.detect(upper, { assumeRoot: r });
+                        foundUpper.forEach(u => candidates.push(`${u} / ${bassNote}`));
                     });
                 }
             }
@@ -88,13 +85,8 @@
             if (uniqueCandidates.length > 0) {
                 out.innerHTML = uniqueCandidates.map(c => `<div class="chord-item">${unify(c)}</div>`).join('');
             } else {
-                // 名前がない場合はベースからの度数構成を表示
-                const ivs = upper.map(n => {
-                    let diff = rawNotes.indexOf(n) - rawNotes.indexOf(bassNote);
-                    if (diff < 0) diff += 12;
-                    return semitoneToInterval[diff];
-                }).join(',');
-                out.innerHTML = `<div class="chord-item">${unify(bassNote)}(${ivs})</div>`;
+                const manual = upper.length === 0 ? bassNote : `${upper.join(',')} / ${bassNote}`;
+                out.innerHTML = `<div class="chord-item">${unify(manual)}</div>`;
             }
 
             ivOut.innerText = upper.map(n => {
@@ -118,9 +110,10 @@
                 btn.onclick = () => {
                     if (selected.includes(n)) {
                         selected = selected.filter(x => x !== n);
+                        if (bassNote === n) bassNote = null;
                     } else {
                         selected.push(n);
-                        if (selected.length === 1) bassNote = n;
+                        if (!bassNote) bassNote = n;
                         if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
                         if (s2f[n]) useSharps = false;
                     }
@@ -131,7 +124,7 @@
         };
 
         document.getElementById('display').onclick = () => {
-            if (selected.length > 1) {
+            if (selected.length > 0) {
                 const idx = selected.indexOf(bassNote);
                 bassNote = selected[(idx + 1) % selected.length];
                 appUpdate();
