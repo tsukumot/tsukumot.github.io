@@ -2,79 +2,106 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chord Lab</title>
-    <script type="module">
-        import { Chord } from "https://cdn.skypack.dev/@tonaljs/tonal";
-        window.Chord = Chord;
-    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Chord Lab - Strictly Unified</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
-        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1rem; }
-        button.selected { background: #007bff; }
-        button.bass { border: 3px solid #ff4757; }
-        #display { background: #000; padding: 20px; border-radius: 10px; text-align: center; min-height: 80px; margin-bottom: 20px; }
-        .chord-main { font-size: 2rem; font-weight: bold; color: #00d1b2; }
-        .hint { font-size: 0.8rem; color: #888; margin-bottom: 10px; }
+        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; }
+        button.selected { background: #007bff; font-weight: bold; }
+        button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
+        #display { background: #000; padding: 20px; border-radius: 10px; text-align: center; min-height: 100px; margin-bottom: 20px; border: 1px solid #444; }
+        .chord-main { font-size: 1.8rem; font-weight: bold; color: #00d1b2; margin: 10px 0; }
+        .interval-info { font-size: 0.9rem; color: #ffa502; }
     </style>
 </head>
 <body>
-    <div id="display">
-        <div class="hint">Result (タップでベース音を切り替え)</div>
-        <div id="chord-out" class="chord-main">-</div>
+    <div id="display" onclick="window.rotateBass()">
+        <div id="chord-out" class="chord-main">SELECT NOTES</div>
+        <div id="interval-out" class="interval-info"></div>
     </div>
-
     <div class="grid" id="pad"></div>
 
-    <script>
-        const notes = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+    <script type="module">
+        import { Chord, Interval } from "https://ga.jspm.io/npm:@tonaljs/tonal@4.10.0/dist/index.mjs";
+
+        const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         let selected = [];
         let bassIndex = 0;
+        let useSharps = false; // デフォルトはフラット
 
-        function update() {
-            const out = document.getElementById('chord-out');
-            if (selected.length === 0) {
-                out.innerText = "-";
-                return;
+        // 文字列全体に対して、全ての # を b に（あるいはその逆に）変換する
+        // 音名だけでなくテンション記号（#11など）も全て対象にする
+        const forceUnify = (text, toSharp) => {
+            const sharpToFlat = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb', '#':'#', 'b':'b' };
+            const flatToSharp = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#', '#':'#', 'b':'b' };
+            
+            if (toSharp) {
+                // シャープに統一：bを#に置換
+                return text.replace(/Db/g, 'C#').replace(/Eb/g, 'D#').replace(/Gb/g, 'F#').replace(/Ab/g, 'G#').replace(/Bb/g, 'A#');
+            } else {
+                // フラットに統一：#をbに置換
+                return text.replace(/C#/g, 'Db').replace(/D#/g, 'Eb').replace(/F#/g, 'Gb').replace(/G#/g, 'Ab').replace(/A#/g, 'Bb');
             }
-
-            const bass = selected[bassIndex % selected.length];
-            const upper = selected.filter(n => n !== bass);
-            
-            // 分子を解析
-            let upperName = window.Chord.detect(upper)[0] || (upper.length > 0 ? "???" : "");
-            
-            // 分子が空（1音のみ）の場合はその音名、それ以外は 分子/ベース 形式
-            out.innerText = upper.length === 0 ? bass : `${upperName} / ${bass}`;
-            
-            render();
-        }
-
-        function render() {
-            const pad = document.getElementById('pad');
-            pad.innerHTML = notes.map(n => {
-                const isSelected = selected.includes(n);
-                const isBass = selected[bassIndex % selected.length] === n;
-                return `<button class="${isSelected ? 'selected' : ''} ${isBass ? 'bass' : ''}" onclick="toggle('${n}')">${n}</button>`;
-            }).join('');
-        }
+        };
 
         window.toggle = (n) => {
             if (selected.includes(n)) {
                 selected = selected.filter(x => x !== n);
             } else {
                 selected.push(n);
+                // 選択した音に合わせて全体のモードを切り替え
+                if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
+                if (['Db','Eb','Gb','Ab','Bb'].includes(forceUnify(n, false))) useSharps = false;
             }
             update();
         };
 
-        // 表示エリアをタップするとベース音をローテーション
-        document.getElementById('display').onclick = () => {
-            bassIndex++;
-            update();
+        window.rotateBass = () => {
+            if (selected.length > 0) {
+                bassIndex = (bassIndex + 1) % selected.length;
+                update();
+            }
         };
 
+        function update() {
+            const out = document.getElementById('chord-out');
+            const ivOut = document.getElementById('interval-out');
+            
+            if (selected.length === 0) {
+                out.innerText = "SELECT NOTES";
+                ivOut.innerText = "";
+                render();
+                return;
+            }
+
+            const bass = selected[bassIndex];
+            const upper = selected.filter(n => n !== bass);
+            
+            const detected = Chord.detect(upper);
+            const upperName = detected.length > 0 ? detected[0] : upper.join(',');
+
+            // 出力文字列を生成してから、最後に一括で「全置換」して統一を保証する
+            const rawResult = upper.length === 0 ? bass : `${upperName} / ${bass}`;
+            out.innerText = forceUnify(rawResult, useSharps);
+            
+            ivOut.innerText = upper.map(n => {
+                const dist = Interval.distance(bass, n);
+                return forceUnify(`${n}:${dist}`, useSharps);
+            }).join(' | ');
+
+            render();
+        }
+
+        function render() {
+            const pad = document.getElementById('pad');
+            pad.innerHTML = rawNotes.map(n => {
+                const isSelected = selected.includes(n);
+                const isBass = isSelected && selected[bassIndex] === n;
+                const label = forceUnify(n, useSharps);
+                return `<button class="${isSelected ? 'selected' : ''} ${isBass ? 'bass' : ''}" onclick="window.toggle('${n}')">${label}</button>`;
+            }).join('');
+        }
         render();
     </script>
 </body>
