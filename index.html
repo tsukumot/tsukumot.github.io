@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Direct Mapping</title>
+    <title>Chord Lab - Musical Analysis</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -17,9 +17,9 @@
         
         button.selected { background: #007bff; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
-        button.is-root { background: #ff4757; } /* 解析中のコードの根音を強調 */
+        button.is-root { background: #ff4757; } 
 
-        #display { background: #000; padding: 15px; border-radius: 10px; min-height: 180px; margin-bottom: 20px; border: 1px solid #444; }
+        #display { background: #000; padding: 15px; border-radius: 10px; min-height: 180px; margin-bottom: 20px; border: 1px solid #444; position: relative; }
         .chord-list { max-height: 200px; overflow-y: auto; }
         .chord-item { 
             padding: 10px; margin-bottom: 8px; background: #222; border-radius: 5px; 
@@ -28,11 +28,21 @@
         .chord-item.active { border-color: #00d1b2; background: #2a2a2a; }
         .chord-name { font-size: 1.4rem; font-weight: bold; color: #00d1b2; }
         
+        /* クリアボタンのスタイル */
+        #clear-btn {
+            position: absolute; top: 10px; right: 10px;
+            padding: 8px 15px; background: #444; color: #ccc;
+            border: none; border-radius: 5px; font-size: 0.8rem; cursor: pointer;
+            z-index: 10;
+        }
+        #clear-btn:active { background: #666; }
+
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
     </style>
 </head>
 <body>
     <div id="display">
+        <button id="clear-btn" onclick="clearAll()">CLEAR</button>
         <div class="label">INTERPRETATIONS (Tap to Map Intervals):</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
     </div>
@@ -48,13 +58,21 @@
 
         let selected = [];
         let bassNote = null;
-        let activeAnalysisRoot = null; // 現在解析表示の基準にしている根音
+        let activeAnalysisRoot = null; 
         let useSharps = false;
 
         const unify = (text) => {
             if (!text) return "";
             const dict = useSharps ? f2s : s2f;
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
+        };
+
+        const clearAll = () => {
+            selected = [];
+            bassNote = null;
+            activeAnalysisRoot = null;
+            useSharps = false;
+            appUpdate();
         };
 
         const appUpdate = () => {
@@ -83,9 +101,12 @@
                 return true;
             });
 
-            // 最初の候補の根音をデフォルトの解析基準にする
-            if (finalCandidates.length > 0 && !activeAnalysisRoot) {
-                activeAnalysisRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
+            // 基準となる根音が未設定、または選択解除された場合は最初の候補をセット
+            if (finalCandidates.length > 0) {
+                const firstRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
+                if (!activeAnalysisRoot || !selected.includes(activeAnalysisRoot)) {
+                    activeAnalysisRoot = firstRoot;
+                }
             }
 
             out.innerHTML = finalCandidates.map(c => {
@@ -116,7 +137,6 @@
 
                 btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '') + (isRoot ? ' is-root' : '');
                 
-                // 度数ラベルの計算
                 let intervalLabel = "";
                 if (activeAnalysisRoot) {
                     let d = (rawNotes.indexOf(n) - rawNotes.indexOf(activeAnalysisRoot) + 12) % 12;
@@ -128,10 +148,9 @@
                     <span class="interval-label">${intervalLabel}</span>
                 `;
 
-                btn.onclick = (e) => {
+                btn.onclick = () => {
                     if (selected.includes(n)) {
                         selected = selected.filter(x => x !== n);
-                        if (n === activeAnalysisRoot) activeAnalysisRoot = null;
                     } else {
                         selected.push(n);
                         if (selected.length === 1) bassNote = n;
@@ -145,7 +164,7 @@
         };
 
         document.getElementById('display').onclick = (e) => {
-            if (e.target.closest('.chord-item')) return;
+            if (e.target.closest('.chord-item') || e.target.id === 'clear-btn') return;
             if (selected.length > 1) {
                 const idx = selected.indexOf(bassNote);
                 bassNote = selected[(idx + 1) % selected.length];
