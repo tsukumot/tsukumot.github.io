@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Pure Components</title>
+    <title>Chord Lab - Stable Version</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -11,7 +11,7 @@
         button.selected { background: #007bff; font-weight: bold; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
         #display { background: #000; padding: 15px; border-radius: 10px; min-height: 200px; margin-bottom: 20px; border: 1px solid #444; }
-        .chord-list { max-height: 220px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
+        .chord-list { max-height: 240px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
         .chord-item { display: block; font-size: 1.25rem; font-weight: bold; color: #00d1b2; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 4px; }
         .interval-info { font-size: 1.1rem; color: #ffa502; font-weight: bold; }
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
@@ -19,7 +19,7 @@
 </head>
 <body>
     <div id="display">
-        <div class="label">INTERPRETATIONS FROM SELECTED NOTES ONLY:</div>
+        <div class="label">ANALYSIS:</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
         <div class="label">INTERVALS FROM BASS:</div>
         <div id="interval-out" class="interval-info"></div>
@@ -32,7 +32,7 @@
         const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
-        const semitoneToInterval = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
+        const intervalMap = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
 
         let selected = [];
         let bassNote = null;
@@ -47,6 +47,7 @@
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             const ivOut = document.getElementById('interval-out');
+            
             if (selected.length === 0) {
                 out.innerText = "---"; ivOut.innerText = "---";
                 render(); return;
@@ -54,45 +55,39 @@
 
             if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
             const upper = selected.filter(n => n !== bassNote);
-            
-            let candidates = [];
-            if (typeof Tonal !== 'undefined') {
-                // 「選択された音（selected）」の中にある音だけをルートとして検討する
-                selected.forEach(r => {
-                    const found = Tonal.Chord.detect(selected, { assumeRoot: r });
-                    found.forEach(name => {
-                        const info = Tonal.Chord.get(name);
-                        // ベース音が和音のルートと一致するかで表記を分ける
-                        if (Tonal.Note.get(info.tonic).chroma === Tonal.Note.get(bassNote).chroma) {
-                            candidates.push(info.symbol);
-                        } else {
-                            candidates.push(`${info.symbol} / ${bassNote}`);
-                        }
-                    });
-                });
 
-                // 上部構造のみの解析においても、上部構造に含まれる音のみをルートとする
-                if (upper.length > 0) {
-                    upper.forEach(r => {
-                        const foundUpper = Tonal.Chord.detect(upper, { assumeRoot: r });
-                        foundUpper.forEach(u => candidates.push(`${u} / ${bassNote}`));
+            let candidates = [];
+
+            if (typeof Tonal !== 'undefined') {
+                // 1. 全体での検出
+                const direct = Tonal.Chord.detect(selected);
+                direct.forEach(c => candidates.push(c));
+
+                // 2. ベース音をルートとした強制解釈（add表記などはライブラリに任せる）
+                // 3. 上部構造を和音と見なした分数コード
+                if (upper.length >= 2) {
+                    const upperResults = Tonal.Chord.detect(upper);
+                    upperResults.forEach(u => {
+                        candidates.push(`${u}/${bassNote}`);
                     });
                 }
             }
 
-            const uniqueCandidates = [...new Set(candidates)].filter(c => c && !c.startsWith(" /"));
+            // 二重表示(GbM7b5/C/Cなど)を防ぐための単純なフィルタ
+            const finalResults = [...new Set(candidates)].filter(c => !c.includes('//')).map(c => {
+                // Root/Bassが同じならスラッシュ以降を消す
+                const parts = c.split('/');
+                if (parts.length === 2 && parts[0] === parts[1]) return parts[0];
+                return c;
+            });
 
-            if (uniqueCandidates.length > 0) {
-                out.innerHTML = uniqueCandidates.map(c => `<div class="chord-item">${unify(c)}</div>`).join('');
-            } else {
-                const manual = upper.length === 0 ? bassNote : `${upper.join(',')} / ${bassNote}`;
-                out.innerHTML = `<div class="chord-item">${unify(manual)}</div>`;
-            }
+            out.innerHTML = finalResults.length > 0 
+                ? [...new Set(finalResults)].map(c => `<div class="chord-item">${unify(c)}</div>`).join('')
+                : `<div class="chord-item">No chord found</div>`;
 
             ivOut.innerText = upper.map(n => {
-                let diff = rawNotes.indexOf(n) - rawNotes.indexOf(bassNote);
-                if (diff < 0) diff += 12;
-                return `${unify(n)}:${unify(semitoneToInterval[diff])}`;
+                let d = (rawNotes.indexOf(n) - rawNotes.indexOf(bassNote) + 12) % 12;
+                return `${unify(n)}:${unify(intervalMap[d])}`;
             }).join(' | ');
 
             render();
@@ -110,12 +105,11 @@
                 btn.onclick = () => {
                     if (selected.includes(n)) {
                         selected = selected.filter(x => x !== n);
-                        if (bassNote === n) bassNote = null;
                     } else {
                         selected.push(n);
-                        if (!bassNote) bassNote = n;
+                        if (selected.length === 1) bassNote = n;
                         if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
-                        if (s2f[n]) useSharps = false;
+                        if (s2f[n] || n === 'F') useSharps = false; // Fの時はフラット優先
                     }
                     appUpdate();
                 };
@@ -124,7 +118,7 @@
         };
 
         document.getElementById('display').onclick = () => {
-            if (selected.length > 0) {
+            if (selected.length > 1) {
                 const idx = selected.indexOf(bassNote);
                 bassNote = selected[(idx + 1) % selected.length];
                 appUpdate();
