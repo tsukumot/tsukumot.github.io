@@ -22,9 +22,10 @@
     </div>
     <div class="grid" id="pad"></div>
 
-    <script type="module">
-        import { Chord, Interval } from "https://ga.jspm.io/npm:@tonaljs/tonal@4.10.0/dist/index.mjs";
-
+    <script>
+        /**
+         * 1. UI・ステート管理 (ライブラリに依存しない)
+         */
         const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
@@ -33,7 +34,7 @@
         let bassIndex = 0;
         let useSharps = false;
 
-        // 全ての出力をどちらかに強制統一
+        // 表記統一
         const unify = (text) => {
             if (!text) return "";
             return useSharps 
@@ -41,28 +42,7 @@
                 : text.replace(/C#|D#|F#|G#|A#/g, m => s2f[m] || m);
         };
 
-        const update = () => {
-            const out = document.getElementById('chord-out');
-            const ivOut = document.getElementById('interval-out');
-            
-            if (selected.length === 0) {
-                out.innerText = "SELECT NOTES";
-                ivOut.innerText = "";
-                render();
-                return;
-            }
-
-            const bass = selected[bassIndex % selected.length];
-            const upper = selected.filter(n => n !== bass);
-            
-            const detected = Chord.detect(upper);
-            const upperName = (detected && detected.length > 0) ? detected[0] : upper.join(',');
-
-            out.innerText = unify(upper.length === 0 ? bass : `${upperName} / ${bass}`);
-            ivOut.innerText = upper.map(n => `${unify(n)}:${unify(Interval.distance(bass, n))}`).join(' | ');
-            render();
-        };
-
+        // ビューの更新
         const render = () => {
             const pad = document.getElementById('pad');
             pad.innerHTML = "";
@@ -77,24 +57,65 @@
                         selected = selected.filter(x => x !== n);
                     } else {
                         selected.push(n);
-                        // 選んだ音に従ってモードを固定
                         if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
                         if (s2f[n]) useSharps = false;
                     }
-                    update();
+                    appUpdate();
                 };
                 pad.appendChild(btn);
             });
         };
 
+        // ベース音変更
         document.getElementById('display').onclick = () => {
             if (selected.length > 0) {
                 bassIndex++;
-                update();
+                appUpdate();
             }
         };
 
+        // アプリケーション層の更新（解析ロジックは後で注入される）
+        window.analyze = (upper, bass) => upper.join(','); 
+        window.getInterval = (bass, n) => "";
+
+        const appUpdate = () => {
+            const out = document.getElementById('chord-out');
+            const ivOut = document.getElementById('interval-out');
+            
+            if (selected.length === 0) {
+                out.innerText = "SELECT NOTES";
+                ivOut.innerText = "";
+                render();
+                return;
+            }
+
+            const bass = selected[bassIndex % selected.length];
+            const upper = selected.filter(n => n !== bass);
+            
+            const upperName = upper.length > 0 ? window.analyze(upper, bass) : "";
+            const res = upper.length === 0 ? bass : `${upperName} / ${bass}`;
+            
+            out.innerText = unify(res);
+            ivOut.innerText = upper.map(n => `${unify(n)}:${unify(window.getInterval(bass, n))}`).join(' | ');
+            render();
+        };
+
+        // 起動（まずボタンを出す）
         render();
+
+        /**
+         * 2. 解析ロジックの注入 (読み込み完了後に動作を上書き)
+         */
+        import("https://ga.jspm.io/npm:@tonaljs/tonal@4.10.0/dist/index.mjs")
+            .then(mod => {
+                window.analyze = (upper) => {
+                    const detected = mod.Chord.detect(upper);
+                    return (detected && detected.length > 0) ? detected[0] : upper.join(',');
+                };
+                window.getInterval = (bass, n) => mod.Interval.distance(bass, n);
+                appUpdate(); // 解析可能になったので再表示
+            })
+            .catch(e => console.error("解析ライブラリが利用できません。音名のみ表示します。", e));
     </script>
 </body>
 </html>
