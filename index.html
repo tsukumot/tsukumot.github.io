@@ -103,20 +103,17 @@
  
 
         // 現在鳴っている音源（オシレーター）を保持する配列
+
         let activeOscillators = [];
 
         const playChord = (rootName) => {
             if (!audioCtx) return;
 
-            // 1. 前に鳴っている音があればすべて止める
+            // 前の音を停止
             activeOscillators.forEach(osc => {
-                try {
-                    osc.stop();
-                } catch (e) {
-                    // すでに停止している場合は無視
-                }
+                try { osc.stop(); } catch (e) {}
             });
-            activeOscillators = []; // 配列をリセット
+            activeOscillators = [];
 
             const rootFreq = Tonal.Note.freq(rootName + "3");
             const rootChroma = Tonal.Note.get(rootName).chroma;
@@ -127,6 +124,9 @@
                 const semitones = (noteChroma - rootChroma + 12) % 12;
 
                 let targetFreq;
+                let volume = 0.08; // デフォルト音量
+
+                // 周波数計算
                 if (semitones === 4) { // M3
                     targetFreq = rootFreq * 1.25;
                 } else if (semitones === 3) { // m3
@@ -136,8 +136,15 @@
                     targetFreq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", interval));
                 }
 
+                // 強調設定 (R=0, P5=7)
+                if (semitones === 0 || semitones === 7) {
+                    volume = 0.15;
+                }
+
+                // ベース音の特別処理
                 if (noteName === bassNote) {
-                    targetFreq = targetFreq * 0.5;
+                    targetFreq = targetFreq * 0.5; // 1オクターブ下
+                    volume = 0.15; // ベースは常に強めに
                 }
 
                 const osc = audioCtx.createOscillator();
@@ -146,7 +153,7 @@
                 osc.frequency.value = targetFreq;
                 
                 gain.gain.setValueAtTime(0, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.1);
+                gain.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.1);
                 gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
 
                 osc.connect(gain);
@@ -154,8 +161,6 @@
                 
                 osc.start();
                 osc.stop(audioCtx.currentTime + duration);
-
-                // 2. この音源を管理配列に追加
                 activeOscillators.push(osc);
             });
         };
