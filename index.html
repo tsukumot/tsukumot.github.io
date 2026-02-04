@@ -14,29 +14,17 @@
         }
         .note-name { font-size: 1.1rem; font-weight: bold; pointer-events: none; }
         .interval-label { font-size: 0.85rem; color: #aaa; margin-top: 4px; pointer-events: none; font-weight: 500; }
-        
         sup { font-size: 0.7em; vertical-align: super; line-height: 0; }
         .chord-name sup { margin-left: 0.5px; }
-        
         button.selected { background: #007bff; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
         button.is-root { background: #ff4757; } 
-
         #display { background: #000; padding: 15px; border-radius: 10px; min-height: 180px; margin-bottom: 20px; border: 1px solid #444; position: relative; }
         .chord-list { max-height: 200px; overflow-y: auto; }
-        .chord-item { 
-            padding: 10px; margin-bottom: 8px; background: #222; border-radius: 5px; 
-            cursor: pointer; border: 1px solid transparent;
-        }
+        .chord-item { padding: 10px; margin-bottom: 8px; background: #222; border-radius: 5px; cursor: pointer; border: 1px solid transparent; }
         .chord-item.active { border-color: #00d1b2; background: #2a2a2a; }
         .chord-name { font-size: 1.5rem; font-weight: bold; color: #00d1b2; }
-        
-        #clear-btn {
-            position: absolute; top: 10px; right: 10px;
-            padding: 8px 15px; background: #444; color: #ccc;
-            border: none; border-radius: 5px; font-size: 0.8rem; cursor: pointer;
-            z-index: 10;
-        }
+        #clear-btn { position: absolute; top: 10px; right: 10px; padding: 8px 15px; background: #444; color: #ccc; border: none; border-radius: 5px; font-size: 0.8rem; cursor: pointer; z-index: 10; }
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
     </style>
 </head>
@@ -62,15 +50,12 @@
         let useSharps = false;
         let pressTimer = null;
         let isLongPress = false;
-
-        // Audio Context
+        let activeOscillators = [];
         let audioCtx = null;
+
         const initAudio = () => {
-            if (!audioCtx) {
-                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            } else if (audioCtx.state === 'suspended') {
-                audioCtx.resume();
-            }
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            else if (audioCtx.state === 'suspended') audioCtx.resume();
         };
 
         const getRawNotes = () => {
@@ -78,17 +63,13 @@
             let startNote = params.get('start') || 'C';
             if (f2s[startNote]) startNote = f2s[startNote];
             const startIndex = baseChromatic.indexOf(startNote.toUpperCase());
-            if (startIndex === -1) return [...baseChromatic];
-            return [...baseChromatic.slice(startIndex), ...baseChromatic.slice(0, startIndex)];
+            return startIndex === -1 ? [...baseChromatic] : [...baseChromatic.slice(startIndex), ...baseChromatic.slice(0, startIndex)];
         };
 
         const rawNotes = getRawNotes();
         const params = new URLSearchParams(window.location.search);
-        if (params.get('start')?.includes('b') || params.get('start') === 'F') {
-            useSharps = false;
-        } else if (params.get('start')?.includes('#')) {
-            useSharps = true;
-        }
+        if (params.get('start')?.includes('b') || params.get('start') === 'F') useSharps = false;
+        else if (params.get('start')?.includes('#')) useSharps = true;
 
         const unifySimple = (text) => {
             if (!text) return "";
@@ -96,55 +77,34 @@
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
-        const unifyChordName = (text) => {
-            let name = unifySimple(text);
-            return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
-        };
- 
+        const unifyChordName = (text) => unifySimple(text).replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
 
-        // 現在鳴っている音源（オシレーター）を保持する配列
-
-        let activeOscillators = [];
+        const getChroma = (note) => Tonal.Note.get(note).chroma;
 
         const playChord = (rootName) => {
             if (!audioCtx) return;
-
-            activeOscillators.forEach(osc => {
-                try { osc.stop(); } catch (e) {}
-            });
+            activeOscillators.forEach(osc => { try { osc.stop(); } catch (e) {} });
             activeOscillators = [];
 
             const rootFreq = Tonal.Note.freq(rootName + "3");
-            const rootChroma = Tonal.Note.get(rootName).chroma;
+            const rootChroma = getChroma(rootName);
             const duration = 5.0;
 
             selected.forEach(noteName => {
-                const noteChroma = Tonal.Note.get(noteName).chroma;
+                const noteChroma = getChroma(noteName);
                 const semitones = (noteChroma - rootChroma + 12) % 12;
 
                 let targetFreq;
                 let volume = 0.08;
 
-                if (semitones === 4) { // M3
-                    targetFreq = rootFreq * 1.25;
-                } else if (semitones === 3) { // m3
-                    targetFreq = rootFreq * 1.2;
-                } else {
-                    const interval = Tonal.Interval.fromSemitones(semitones);
-                    targetFreq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", interval));
-                }
+                if (semitones === 4) targetFreq = rootFreq * 1.25;
+                else if (semitones === 3) targetFreq = rootFreq * 1.2;
+                else targetFreq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", Tonal.Interval.fromSemitones(semitones)));
 
-                if (semitones === 0 || semitones === 7) {
-                    volume = 0.15;
-                }
+                if (semitones === 0 || semitones === 7) volume = 0.15;
 
-                // ベース音の判定ロジックを更新
                 if (noteName === bassNote) {
-                    // 「ベース音名」が「根音名」より高い位置にある場合のみ、オクターブ下げる
-                    // 例：根音がCでベースがE(4半音上)なら、Eをオクターブ下げる
-                    if (semitones > 0) {
-                        targetFreq = targetFreq * 0.5;
-                    }
+                    if (semitones > 0) targetFreq *= 0.5;
                     volume = 0.15; 
                 }
 
@@ -152,11 +112,9 @@
                 const gain = audioCtx.createGain();
                 osc.type = 'triangle';
                 osc.frequency.value = targetFreq;
-                
                 gain.gain.setValueAtTime(0, audioCtx.currentTime);
                 gain.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.1);
                 gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
                 osc.start();
@@ -165,11 +123,7 @@
             });
         };
 
-
-        const clearAll = () => {
-            selected = []; bassNote = null; activeAnalysisRoot = null;
-            appUpdate();
-        };
+        const clearAll = () => { selected = []; bassNote = null; activeAnalysisRoot = null; appUpdate(); };
 
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
@@ -178,43 +132,39 @@
                 activeAnalysisRoot = null; render(); return;
             }
 
-            if (!bassNote || !selected.includes(bassNote)) {
-                bassNote = selected[0] || null;
-            }
-
-            if (activeAnalysisRoot && !selected.includes(activeAnalysisRoot)) {
-                activeAnalysisRoot = null;
-            }
+            if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0] || null;
 
             let rawCandidates = Tonal.Chord.detect(selected);
             const upper = selected.filter(n => n !== bassNote);
-            if (upper.length >= 2) {
-                Tonal.Chord.detect(upper).forEach(u => rawCandidates.push(u));
-            }
+            if (upper.length >= 2) Tonal.Chord.detect(upper).forEach(u => rawCandidates.push(u));
 
             let finalCandidates = [...new Set(rawCandidates)].map(c => {
                 const main = c.split('/')[0];
                 const root = Tonal.Chord.get(main).tonic;
-                if (root && Tonal.Note.get(root).chroma === Tonal.Note.get(bassNote).chroma) {
-                    return main;
-                } else {
-                    return `${main}/${bassNote}`;
-                }
+                if (root && getChroma(root) === getChroma(bassNote)) return main;
+                return `${main}/${bassNote}`;
             });
 
-            if (finalCandidates.length > 1) {
-                finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
+            if (finalCandidates.length > 1) finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
+
+            // activeAnalysisRootの妥当性チェック（クロマで判定）
+            if (activeAnalysisRoot && !selected.some(n => getChroma(n) === getChroma(activeAnalysisRoot))) {
+                activeAnalysisRoot = null;
             }
 
             if (finalCandidates.length > 0 && !activeAnalysisRoot) {
-                activeAnalysisRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
+                const firstCandidateRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
+                // rawNotesに含まれる名前に正規化
+                activeAnalysisRoot = rawNotes.find(n => getChroma(n) === getChroma(firstCandidateRoot)) || firstCandidateRoot;
             }
 
             out.innerHTML = finalCandidates.map(c => {
-                const root = Tonal.Chord.get(c.split('/')[0]).tonic;
-                const isActive = root === activeAnalysisRoot;
+                const chordTonic = Tonal.Chord.get(c.split('/')[0]).tonic;
+                // 表示・選択用に、現在のrawNotes（C, Db等）の中から最も適切な音名を探す
+                const rootForInternalUse = rawNotes.find(n => getChroma(n) === getChroma(chordTonic)) || chordTonic;
+                const isActive = getChroma(rootForInternalUse) === getChroma(activeAnalysisRoot);
                 return `
-                    <div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${root}'); playChord('${root}')">
+                    <div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${rootForInternalUse}'); playChord('${rootForInternalUse}')">
                         <div class="chord-name">${unifyChordName(c)}</div>
                     </div>`;
             }).join('');
@@ -234,20 +184,17 @@
                 const btn = document.createElement('button');
                 const isSelected = selected.includes(n);
                 const isBass = isSelected && bassNote === n;
-                const isRoot = n === activeAnalysisRoot;
+                const isRoot = activeAnalysisRoot && getChroma(n) === getChroma(activeAnalysisRoot);
 
                 btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '') + (isRoot ? ' is-root' : '');
                 
                 let intervalLabel = "";
                 if (activeAnalysisRoot) {
-                    let d = (baseChromatic.indexOf(n) - baseChromatic.indexOf(activeAnalysisRoot) + 12) % 12;
+                    let d = (getChroma(n) - getChroma(activeAnalysisRoot) + 12) % 12;
                     intervalLabel = intervalNames[d];
                 }
 
-                btn.innerHTML = `
-                    <span class="note-name">${unifySimple(n)}</span>
-                    <span class="interval-label">${intervalLabel}</span>
-                `;
+                btn.innerHTML = `<span class="note-name">${unifySimple(n)}</span><span class="interval-label">${intervalLabel}</span>`;
 
                 btn.onpointerdown = (e) => {
                     isLongPress = false;
@@ -269,7 +216,7 @@
                             if (selected.includes(n)) {
                                 selected = selected.filter(x => x !== n);
                                 if (n === bassNote) bassNote = null;
-                                if (n === activeAnalysisRoot) activeAnalysisRoot = null;
+                                if (getChroma(n) === getChroma(activeAnalysisRoot)) activeAnalysisRoot = null;
                             } else {
                                 selected.push(n);
                                 if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
@@ -280,13 +227,7 @@
                     }
                 };
 
-                btn.onpointercancel = btn.onpointerleave = (e) => {
-                    if (pressTimer) {
-                        clearTimeout(pressTimer);
-                        pressTimer = null;
-                    }
-                };
-
+                btn.onpointercancel = btn.onpointerleave = (e) => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
                 pad.appendChild(btn);
             });
         };
