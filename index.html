@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Musical Fix</title>
+    <title>Chord Lab - Musical Logic</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -41,6 +41,55 @@
                 : text.replace(/C#|D#|F#|G#|A#/g, m => s2f[m] || m);
         };
 
+        const appUpdate = () => {
+            const out = document.getElementById('chord-out');
+            const ivOut = document.getElementById('interval-out');
+            
+            if (selected.length === 0) {
+                out.innerText = "SELECT NOTES";
+                ivOut.innerText = "";
+                render();
+                return;
+            }
+
+            const bass = selected[bassIndex % selected.length];
+            
+            let finalName = "";
+            if (typeof Tonal !== 'undefined') {
+                // 1. まず全ての選択音で和音を検索
+                const allDetected = Tonal.Chord.detect(selected);
+                
+                if (allDetected.length > 0) {
+                    const topResult = allDetected[0]; // 例: "Bb", "BbM7"
+                    // 和音のルート（先頭文字）が現在のベース音と一致するかチェック
+                    if (topResult.startsWith(unify(bass))) {
+                        finalName = topResult; // 一致すればそのまま（Bb 等）
+                    } else {
+                        // 一致しなければオンコード表示（Bb/D 等）
+                        finalName = `${topResult} / ${bass}`;
+                    }
+                } else {
+                    // 2. 既存の和音に当てはまらない場合（不協和音など）
+                    const upper = selected.filter(n => n !== bass);
+                    const upperDetected = Tonal.Chord.detect(upper);
+                    const upperName = (upperDetected.length > 0) ? upperDetected[0] : upper.join(',');
+                    finalName = upper.length === 0 ? bass : `${upperName} / ${bass}`;
+                }
+            }
+
+            out.innerText = unify(finalName);
+
+            // 度数計算
+            const others = selected.filter(n => n !== bass);
+            ivOut.innerText = others.map(n => {
+                let diff = rawNotes.indexOf(n) - rawNotes.indexOf(bass);
+                if (diff < 0) diff += 12;
+                return `${unify(n)}:${unify(semitoneToInterval[diff])}`;
+            }).join(' | ');
+
+            render();
+        };
+
         const render = () => {
             const pad = document.getElementById('pad');
             pad.innerHTML = "";
@@ -64,42 +113,6 @@
             });
         };
 
-        const appUpdate = () => {
-            const out = document.getElementById('chord-out');
-            const ivOut = document.getElementById('interval-out');
-            
-            if (selected.length === 0) {
-                out.innerText = "SELECT NOTES";
-                ivOut.innerText = "";
-                render();
-                return;
-            }
-
-            const bass = selected[bassIndex % selected.length];
-            // 全選択音（ベースを含む）で和音を判定
-            let detectedName = "";
-            if (typeof Tonal !== 'undefined') {
-                const detected = Tonal.Chord.detect(selected);
-                detectedName = (detected && detected.length > 0) ? detected[0] : selected.join(',');
-            }
-
-            // 表示文字列の構築
-            // 和音のルートがベース音と同じなら単一表示、違うならオンコード表示
-            const res = detectedName.startsWith(bass) ? detectedName : `${detectedName} / ${bass}`;
-            out.innerText = unify(res);
-
-            // 度数計算（ベース音からの距離）
-            const upper = selected.filter(n => n !== bass);
-            const ivStrings = upper.map(n => {
-                let diff = rawNotes.indexOf(n) - rawNotes.indexOf(bass);
-                if (diff < 0) diff += 12;
-                return `${unify(n)}:${unify(semitoneToInterval[diff])}`;
-            });
-            ivOut.innerText = ivStrings.join(' | ');
-
-            render();
-        };
-
         document.getElementById('display').onclick = () => {
             if (selected.length > 0) {
                 bassIndex++;
@@ -111,3 +124,4 @@
     </script>
 </body>
 </html>
+
