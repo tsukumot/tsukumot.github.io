@@ -5,15 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chord Lab - Musical Analysis</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
+        body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
         button { 
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             padding: 10px 5px; border: none; border-radius: 5px; background: #333; color: white; 
             min-height: 75px; outline: none; transition: 0.1s;
         }
-        .note-name { font-size: 1.1rem; font-weight: bold; }
-        .interval-label { font-size: 0.9rem; color: #aaa; margin-top: 4px; }
+        .note-name { font-size: 1.1rem; font-weight: bold; pointer-events: none; }
+        .interval-label { font-size: 0.9rem; color: #aaa; margin-top: 4px; pointer-events: none; }
         
         .chord-name sup { font-size: 0.7em; vertical-align: super; line-height: 0; margin-left: 0.5px; }
         
@@ -59,6 +59,7 @@
         let bassNote = null;
         let activeAnalysisRoot = null; 
         let useSharps = false;
+        let pressTimer;
 
         const unifySimple = (text) => {
             if (!text) return "";
@@ -69,10 +70,7 @@
         const unifyChordName = (text) => {
             let name = unifySimple(text);
             const parts = name.split('/');
-            // 数字、#、b、括弧のみを上付きにする
-            parts[0] = parts[0].replace(/([0-9]|#|b|\(|\))+/g, (match) => {
-                return `<sup>${match}</sup>`;
-            });
+            parts[0] = parts[0].replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
             return parts.join('/');
         };
 
@@ -88,7 +86,10 @@
                 activeAnalysisRoot = null; render(); return;
             }
 
-            if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
+            // ベース音が未設定、もしくは選択解除された場合の自動フォロー
+            if (!bassNote || !selected.includes(bassNote)) {
+                bassNote = selected[0];
+            }
 
             let candidates = Tonal.Chord.detect(selected);
             const upper = selected.filter(n => n !== bassNote);
@@ -152,29 +153,45 @@
                     <span class="interval-label">${intervalLabel}</span>
                 `;
 
-                btn.onclick = () => {
-                    if (selected.includes(n)) {
-                        selected = selected.filter(x => x !== n);
-                    } else {
-                        selected.push(n);
-                        if (selected.length === 1) bassNote = n;
+                // 長押しとタップの判定
+                const start = (e) => {
+                    e.preventDefault();
+                    pressTimer = setTimeout(() => {
+                        // 長押し時の挙動: ベース音に指定
+                        if (!selected.includes(n)) selected.push(n);
+                        bassNote = n;
                         if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
                         if (s2f[n]) useSharps = false;
-                    }
-                    appUpdate();
+                        appUpdate();
+                        pressTimer = null;
+                    }, 500);
                 };
+
+                const end = (e) => {
+                    if (pressTimer) {
+                        clearTimeout(pressTimer);
+                        // 短押し（通常のタップ）の挙動: 選択/解除
+                        if (selected.includes(n)) {
+                            selected = selected.filter(x => x !== n);
+                        } else {
+                            selected.push(n);
+                            if (selected.length === 1) bassNote = n;
+                            if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
+                            if (s2f[n]) useSharps = false;
+                        }
+                        appUpdate();
+                    }
+                };
+
+                btn.onmousedown = start;
+                btn.onmouseup = end;
+                btn.ontouchstart = start;
+                btn.ontouchend = end;
+
                 pad.appendChild(btn);
             });
         };
 
-        document.getElementById('display').onclick = (e) => {
-            if (e.target.closest('.chord-item') || e.target.id === 'clear-btn') return;
-            if (selected.length > 1) {
-                const idx = selected.indexOf(bassNote);
-                bassNote = selected[(idx + 1) % selected.length];
-                appUpdate();
-            }
-        };
         render();
     </script>
 </body>
