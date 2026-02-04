@@ -15,8 +15,7 @@
         .note-name { font-size: 1.1rem; font-weight: bold; }
         .interval-label { font-size: 0.9rem; color: #aaa; margin-top: 4px; }
         
-        /* コード名の数字と記号を上付きにするためのスタイル */
-        .chord-name sup { font-size: 0.65em; vertical-align: super; line-height: 0; margin-left: 1px; }
+        .chord-name sup { font-size: 0.7em; vertical-align: super; line-height: 0; margin-left: 0.5px; }
         
         button.selected { background: #007bff; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
@@ -61,21 +60,18 @@
         let activeAnalysisRoot = null; 
         let useSharps = false;
 
-        // 音名のみの変換（ボタン用）
         const unifySimple = (text) => {
             if (!text) return "";
             const dict = useSharps ? f2s : s2f;
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
-        // コード名用：数字や付随する記号を上付きにする
         const unifyChordName = (text) => {
             let name = unifySimple(text);
-            // 分離して処理（分数コードのベース音は上付きにしない）
             const parts = name.split('/');
-            // 数字、M(Major), m(minor), dim, aug, sus, add, およびそれに続くb/#を上付きにする
-            parts[0] = parts[0].replace(/([0-9]|M|m|dim|aug|sus|add|#|b)+/g, (match, offset) => {
-                return offset === 0 ? match : `<sup>${match}</sup>`;
+            // 数字、#、b、括弧のみを上付きにする
+            parts[0] = parts[0].replace(/([0-9]|#|b|\(|\))+/g, (match) => {
+                return `<sup>${match}</sup>`;
             });
             return parts.join('/');
         };
@@ -148,7 +144,7 @@
                 let intervalLabel = "";
                 if (activeAnalysisRoot) {
                     let d = (rawNotes.indexOf(n) - rawNotes.indexOf(activeAnalysisRoot) + 12) % 12;
-                    intervalLabel = intervalNames[d]; // ここは上付きにしない
+                    intervalLabel = intervalNames[d];
                 }
 
                 btn.innerHTML = `
