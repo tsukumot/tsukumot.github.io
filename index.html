@@ -105,6 +105,9 @@
             if (!audioCtx) return;
             const rootFreq = Tonal.Note.freq(rootName + "3");
             const rootChroma = Tonal.Note.get(rootName).chroma;
+            
+            // 再生時間を5秒に設定
+            const duration = 5.0;
 
             selected.forEach(noteName => {
                 const noteChroma = Tonal.Note.get(noteName).chroma;
@@ -116,7 +119,6 @@
                 } else if (semitones === 3) { // m3
                     targetFreq = rootFreq * 1.2;
                 } else {
-                    // 他は平均律
                     const interval = Tonal.Interval.fromSemitones(semitones);
                     targetFreq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", interval));
                 }
@@ -126,14 +128,16 @@
                 osc.type = 'triangle';
                 osc.frequency.value = targetFreq;
                 
+                // フェードインと長めのフェードアウト
                 gain.gain.setValueAtTime(0, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.05);
-                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+                gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.1);
+                // 終了間際にフェードアウトを開始
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
 
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
                 osc.start();
-                osc.stop(audioCtx.currentTime + 1.5);
+                osc.stop(audioCtx.currentTime + duration);
             });
         };
 
