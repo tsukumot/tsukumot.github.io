@@ -57,3 +57,80 @@
             const upper = selected.filter(n => n !== bassNote);
 
             let candidates = [];
+
+            if (typeof Tonal !== 'undefined') {
+                // 1. 全体での検出
+                Tonal.Chord.detect(selected).forEach(c => candidates.push(c));
+
+                // 2. 上部構造の解析（二重スラッシュを防止）
+                if (upper.length >= 2) {
+                    Tonal.Chord.detect(upper).forEach(u => {
+                        const mainPart = u.split('/')[0];
+                        candidates.push(`${mainPart}/${bassNote}`);
+                    });
+                }
+            }
+
+            // 表記の整理（重複削除と、ルート/ベース一致時のスラッシュ消去）
+            const finalResults = [...new Set(candidates)].map(c => {
+                const parts = c.split('/');
+                if (parts.length === 2) {
+                    const chordInfo = Tonal.Chord.get(parts[0]);
+                    if (chordInfo && chordInfo.tonic) {
+                        const rootChroma = Tonal.Note.get(chordInfo.tonic).chroma;
+                        const bassChroma = Tonal.Note.get(bassNote).chroma;
+                        if (rootChroma === bassChroma) return parts[0];
+                    }
+                }
+                return c;
+            });
+
+            const uniqueFinal = [...new Set(finalResults)];
+            out.innerHTML = uniqueFinal.length > 0 
+                ? uniqueFinal.map(c => `<div class="chord-item">${unify(c)}</div>`).join('')
+                : `<div class="chord-item">No chord found</div>`;
+
+            ivOut.innerText = upper.map(n => {
+                let d = (rawNotes.indexOf(n) - rawNotes.indexOf(bassNote) + 12) % 12;
+                return `${unify(n)}:${unify(intervalMap[d])}`;
+            }).join(' | ');
+
+            render();
+        };
+
+        const render = () => {
+            const pad = document.getElementById('pad');
+            pad.innerHTML = "";
+            rawNotes.forEach(n => {
+                const btn = document.createElement('button');
+                const isSelected = selected.includes(n);
+                const isBass = isSelected && bassNote === n;
+                btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '');
+                btn.innerText = unify(n);
+                btn.onclick = () => {
+                    if (selected.includes(n)) {
+                        selected = selected.filter(x => x !== n);
+                    } else {
+                        selected.push(n);
+                        if (selected.length === 1) bassNote = n;
+                        if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
+                        if (s2f[n]) useSharps = false;
+                    }
+                    appUpdate();
+                };
+                pad.appendChild(btn);
+            });
+        };
+
+            // 表示エリアをクリックでベース音を切り替え
+        document.getElementById('display').onclick = () => {
+            if (selected.length > 1) {
+                const idx = selected.indexOf(bassNote);
+                bassNote = selected[(idx + 1) % selected.length];
+                appUpdate();
+            }
+        };
+        render();
+    </script>
+</body>
+</html>
