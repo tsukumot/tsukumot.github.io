@@ -3,34 +3,79 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Chord Analyzer</title>
+    <title>Chord Lab</title>
+    <script type="module">
+        import { Chord } from "https://cdn.skypack.dev/@tonaljs/tonal";
+        window.Chord = Chord;
+    </script>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
-        #result { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        .chord-name { font-size: 1.5rem; font-weight: bold; color: #007bff; }
+        body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
+        .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1rem; }
+        button.selected { background: #007bff; }
+        button.bass { border: 3px solid #ff4757; }
+        #display { background: #000; padding: 20px; border-radius: 10px; text-align: center; min-height: 80px; margin-bottom: 20px; }
+        .chord-main { font-size: 2rem; font-weight: bold; color: #00d1b2; }
+        .hint { font-size: 0.8rem; color: #888; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-    <h3>解析結果</h3>
-    <div id="result">解析中...</div>
+    <div id="display">
+        <div class="hint">Result (タップでベース音を切り替え)</div>
+        <div id="chord-out" class="chord-main">-</div>
+    </div>
 
-    <script type="module">
-        import { Chord } from "https://cdn.skypack.dev/@tonaljs/tonal";
+    <div class="grid" id="pad"></div>
 
-        // 解析したい音名
-        const notes = ["C", "F", "Gb", "Bb"];
-        
-        // コード判定
-        const detected = Chord.detect(notes);
-        
-        const resultDiv = document.getElementById('result');
-        
-        if (detected.length > 0) {
-            // 見つかったコードをすべて画面に表示
-            resultDiv.innerHTML = detected.map(name => `<div class="chord-name">${name}</div>`).join('');
-        } else {
-            resultDiv.innerHTML = "該当するコードが見つかりません";
+    <script>
+        const notes = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
+        let selected = [];
+        let bassIndex = 0;
+
+        function update() {
+            const out = document.getElementById('chord-out');
+            if (selected.length === 0) {
+                out.innerText = "-";
+                return;
+            }
+
+            const bass = selected[bassIndex % selected.length];
+            const upper = selected.filter(n => n !== bass);
+            
+            // 分子を解析
+            let upperName = window.Chord.detect(upper)[0] || (upper.length > 0 ? "???" : "");
+            
+            // 分子が空（1音のみ）の場合はその音名、それ以外は 分子/ベース 形式
+            out.innerText = upper.length === 0 ? bass : `${upperName} / ${bass}`;
+            
+            render();
         }
+
+        function render() {
+            const pad = document.getElementById('pad');
+            pad.innerHTML = notes.map(n => {
+                const isSelected = selected.includes(n);
+                const isBass = selected[bassIndex % selected.length] === n;
+                return `<button class="${isSelected ? 'selected' : ''} ${isBass ? 'bass' : ''}" onclick="toggle('${n}')">${n}</button>`;
+            }).join('');
+        }
+
+        window.toggle = (n) => {
+            if (selected.includes(n)) {
+                selected = selected.filter(x => x !== n);
+            } else {
+                selected.push(n);
+            }
+            update();
+        };
+
+        // 表示エリアをタップするとベース音をローテーション
+        document.getElementById('display').onclick = () => {
+            bassIndex++;
+            update();
+        };
+
+        render();
     </script>
 </body>
 </html>
