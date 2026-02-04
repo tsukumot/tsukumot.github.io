@@ -136,49 +136,6 @@
             render();
         };
 
-
-            if (!bassNote || !selected.includes(bassNote)) {
-                bassNote = selected[0];
-            }
-
-            let candidates = Tonal.Chord.detect(selected);
-            const upper = selected.filter(n => n !== bassNote);
-            if (upper.length >= 2) {
-                Tonal.Chord.detect(upper).forEach(u => {
-                    const main = u.split('/')[0];
-                    candidates.push(`${main}/${bassNote}`);
-                });
-            }
-
-            let finalCandidates = [...new Set(candidates)].filter(c => {
-                if (c.includes('5/') && candidates.length > 1) return false;
-                const parts = c.split('/');
-                if (parts.length === 2) {
-                    const r = Tonal.Chord.get(parts[0]).tonic;
-                    if (r && Tonal.Note.get(r).chroma === Tonal.Note.get(bassNote).chroma) return false;
-                }
-                return true;
-            });
-
-            if (finalCandidates.length > 0) {
-                const firstRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
-                if (!activeAnalysisRoot || !selected.includes(activeAnalysisRoot)) {
-                    activeAnalysisRoot = firstRoot;
-                }
-            }
-
-            out.innerHTML = finalCandidates.map(c => {
-                const root = Tonal.Chord.get(c.split('/')[0]).tonic;
-                const isActive = root === activeAnalysisRoot;
-                return `
-                    <div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${root}')">
-                        <div class="chord-name">${unifyChordName(c)}</div>
-                    </div>`;
-            }).join('');
-
-            render();
-        };
-
         window.setAnalysisRoot = (root) => {
             activeAnalysisRoot = root;
             appUpdate();
