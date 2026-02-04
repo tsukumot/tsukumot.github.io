@@ -3,30 +3,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Visual Analysis</title>
+    <title>Chord Lab - Direct Mapping</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
-        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; outline: none; }
-        button.selected { background: #007bff; font-weight: bold; }
-        button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
-        #display { background: #000; padding: 15px; border-radius: 10px; min-height: 200px; margin-bottom: 20px; border: 1px solid #444; }
-        .chord-list { max-height: 300px; overflow-y: auto; }
-        .chord-item { margin-bottom: 18px; padding-bottom: 10px; border-bottom: 1px solid #333; }
-        .chord-name { font-size: 1.6rem; font-weight: bold; color: #00d1b2; margin-bottom: 8px; }
+        button { 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            padding: 10px 5px; border: none; border-radius: 5px; background: #333; color: white; 
+            min-height: 70px; outline: none; transition: 0.1s;
+        }
+        .note-name { font-size: 1.1rem; font-weight: bold; }
+        .interval-label { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
         
-        /* 視覚的なインターバル表示 */
-        .viz-bar { display: flex; width: 100%; height: 24px; background: #222; border-radius: 4px; overflow: hidden; margin-top: 5px; border: 1px solid #444; }
-        .viz-cell { flex: 1; text-align: center; font-size: 0.7rem; line-height: 24px; border-right: 1px solid #333; color: #555; position: relative; }
-        .viz-cell.active { background: #ffa502; color: #000; font-weight: bold; }
-        .viz-cell.root { background: #ff4757; color: #fff; }
+        button.selected { background: #007bff; }
+        button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
+        button.is-root { background: #ff4757; } /* 解析中のコードの根音を強調 */
+
+        #display { background: #000; padding: 15px; border-radius: 10px; min-height: 180px; margin-bottom: 20px; border: 1px solid #444; }
+        .chord-list { max-height: 200px; overflow-y: auto; }
+        .chord-item { 
+            padding: 10px; margin-bottom: 8px; background: #222; border-radius: 5px; 
+            cursor: pointer; border: 1px solid transparent;
+        }
+        .chord-item.active { border-color: #00d1b2; background: #2a2a2a; }
+        .chord-name { font-size: 1.4rem; font-weight: bold; color: #00d1b2; }
         
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
     </style>
 </head>
 <body>
     <div id="display">
-        <div class="label">INTERPRETATIONS (Visual Root-Relative Structure):</div>
+        <div class="label">INTERPRETATIONS (Tap to Map Intervals):</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
     </div>
     <div class="grid" id="pad"></div>
@@ -41,6 +48,7 @@
 
         let selected = [];
         let bassNote = null;
+        let activeAnalysisRoot = null; // 現在解析表示の基準にしている根音
         let useSharps = false;
 
         const unify = (text) => {
@@ -51,7 +59,12 @@
 
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
-            if (selected.length === 0) { out.innerText = "SELECT NOTES"; render(); return; }
+            if (selected.length === 0) {
+                out.innerText = "SELECT NOTES";
+                activeAnalysisRoot = null;
+                render(); return;
+            }
+
             if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
 
             let candidates = Tonal.Chord.detect(selected);
@@ -70,30 +83,26 @@
                 return true;
             });
 
+            // 最初の候補の根音をデフォルトの解析基準にする
+            if (finalCandidates.length > 0 && !activeAnalysisRoot) {
+                activeAnalysisRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
+            }
+
             out.innerHTML = finalCandidates.map(c => {
                 const root = Tonal.Chord.get(c.split('/')[0]).tonic;
-                if (!root) return `<div class="chord-item"><div class="chord-name">${unify(c)}</div></div>`;
-                
-                const activeChromas = selected.map(n => Tonal.Note.get(n).chroma);
-                const rootChroma = Tonal.Note.get(root).chroma;
-
-                // 根音を0とした12音のバーを生成
-                let barHtml = '<div class="viz-bar">';
-                for (let i = 0; i < 12; i++) {
-                    const currentChroma = (rootChroma + i) % 12;
-                    const isActive = activeChromas.includes(currentChroma);
-                    const isRoot = i === 0;
-                    const className = `viz-cell ${isActive ? 'active' : ''} ${isRoot ? 'root' : ''}`;
-                    barHtml += `<div class="${className}">${intervalNames[i]}</div>`;
-                }
-                barHtml += '</div>';
-
-                return `<div class="chord-item">
-                            <div class="chord-name">${unify(c)}</div>
-                            ${barHtml}
-                        </div>`;
+                const isActive = root === activeAnalysisRoot;
+                return `
+                    <div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${root}')">
+                        <div class="chord-name">${unify(c)}</div>
+                    </div>`;
             }).join('');
+
             render();
+        };
+
+        window.setAnalysisRoot = (root) => {
+            activeAnalysisRoot = root;
+            appUpdate();
         };
 
         const render = () => {
@@ -103,11 +112,26 @@
                 const btn = document.createElement('button');
                 const isSelected = selected.includes(n);
                 const isBass = isSelected && bassNote === n;
-                btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '');
-                btn.innerText = unify(n);
-                btn.onclick = () => {
+                const isRoot = n === activeAnalysisRoot;
+
+                btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '') + (isRoot ? ' is-root' : '');
+                
+                // 度数ラベルの計算
+                let intervalLabel = "";
+                if (activeAnalysisRoot) {
+                    let d = (rawNotes.indexOf(n) - rawNotes.indexOf(activeAnalysisRoot) + 12) % 12;
+                    intervalLabel = intervalNames[d];
+                }
+
+                btn.innerHTML = `
+                    <span class="note-name">${unify(n)}</span>
+                    <span class="interval-label">${intervalLabel}</span>
+                `;
+
+                btn.onclick = (e) => {
                     if (selected.includes(n)) {
                         selected = selected.filter(x => x !== n);
+                        if (n === activeAnalysisRoot) activeAnalysisRoot = null;
                     } else {
                         selected.push(n);
                         if (selected.length === 1) bassNote = n;
@@ -120,7 +144,8 @@
             });
         };
 
-        document.getElementById('display').onclick = () => {
+        document.getElementById('display').onclick = (e) => {
+            if (e.target.closest('.chord-item')) return;
             if (selected.length > 1) {
                 const idx = selected.indexOf(bassNote);
                 bassNote = selected[(idx + 1) % selected.length];
