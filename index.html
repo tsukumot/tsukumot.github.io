@@ -7,7 +7,7 @@
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
-        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; outline: none; }
+        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; outline: none; -webkit-appearance: none; }
         button.selected { background: #007bff; font-weight: bold; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
         #display { background: #000; padding: 20px; border-radius: 10px; text-align: center; min-height: 100px; margin-bottom: 20px; border: 1px solid #444; }
@@ -22,9 +22,11 @@
     </div>
     <div class="grid" id="pad"></div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@tonaljs/tonal/browser/tonal.min.js"></script>
+
     <script>
         /**
-         * 1. UI・ステート管理 (ライブラリに依存しない)
+         * 2. アプリケーション・ロジック
          */
         const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
@@ -34,7 +36,7 @@
         let bassIndex = 0;
         let useSharps = false;
 
-        // 表記統一
+        // 表記の統一 (シャープ/フラットを混ぜない)
         const unify = (text) => {
             if (!text) return "";
             return useSharps 
@@ -42,7 +44,7 @@
                 : text.replace(/C#|D#|F#|G#|A#/g, m => s2f[m] || m);
         };
 
-        // ビューの更新
+        // UI（ボタン）の描画
         const render = () => {
             const pad = document.getElementById('pad');
             pad.innerHTML = "";
@@ -66,18 +68,7 @@
             });
         };
 
-        // ベース音変更
-        document.getElementById('display').onclick = () => {
-            if (selected.length > 0) {
-                bassIndex++;
-                appUpdate();
-            }
-        };
-
-        // アプリケーション層の更新（解析ロジックは後で注入される）
-        window.analyze = (upper, bass) => upper.join(','); 
-        window.getInterval = (bass, n) => "";
-
+        // 表示の更新
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             const ivOut = document.getElementById('interval-out');
@@ -92,30 +83,42 @@
             const bass = selected[bassIndex % selected.length];
             const upper = selected.filter(n => n !== bass);
             
-            const upperName = upper.length > 0 ? window.analyze(upper, bass) : "";
+            // 解析機能が利用可能かチェックして実行
+            let upperName = upper.join(',');
+            let intervalStrings = [];
+
+            if (typeof Tonal !== 'undefined') {
+                // コード解析
+                if (upper.length > 0) {
+                    const detected = Tonal.Chord.detect(upper);
+                    upperName = (detected && detected.length > 0) ? detected[0] : upper.join(',');
+                }
+                // 度数解析
+                intervalStrings = upper.map(n => {
+                    const dist = Tonal.Interval.distance(bass, n);
+                    return `${unify(n)}:${unify(dist)}`;
+                });
+            } else {
+                console.error("Tonal library not found.");
+            }
+
             const res = upper.length === 0 ? bass : `${upperName} / ${bass}`;
-            
             out.innerText = unify(res);
-            ivOut.innerText = upper.map(n => `${unify(n)}:${unify(window.getInterval(bass, n))}`).join(' | ');
+            ivOut.innerText = intervalStrings.join(' | ');
+
             render();
         };
 
-        // 起動（まずボタンを出す）
-        render();
+        // ベース音の変更
+        document.getElementById('display').onclick = () => {
+            if (selected.length > 0) {
+                bassIndex++;
+                appUpdate();
+            }
+        };
 
-        /**
-         * 2. 解析ロジックの注入 (読み込み完了後に動作を上書き)
-         */
-        import("https://ga.jspm.io/npm:@tonaljs/tonal@4.10.0/dist/index.mjs")
-            .then(mod => {
-                window.analyze = (upper) => {
-                    const detected = mod.Chord.detect(upper);
-                    return (detected && detected.length > 0) ? detected[0] : upper.join(',');
-                };
-                window.getInterval = (bass, n) => mod.Interval.distance(bass, n);
-                appUpdate(); // 解析可能になったので再表示
-            })
-            .catch(e => console.error("解析ライブラリが利用できません。音名のみ表示します。", e));
+        // 初期起動
+        render();
     </script>
 </body>
 </html>
