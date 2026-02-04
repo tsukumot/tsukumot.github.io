@@ -14,7 +14,6 @@
         }
         .note-name { font-size: 1.1rem; font-weight: bold; pointer-events: none; }
         .interval-label { font-size: 0.9rem; color: #aaa; margin-top: 4px; pointer-events: none; }
-        
         .chord-name sup { font-size: 0.7em; vertical-align: super; line-height: 0; margin-left: 0.5px; }
         
         button.selected { background: #007bff; }
@@ -59,7 +58,7 @@
         let bassNote = null;
         let activeAnalysisRoot = null; 
         let useSharps = false;
-        let pressTimer;
+        let pressTimer = null;
 
         const unifySimple = (text) => {
             if (!text) return "";
@@ -86,7 +85,6 @@
                 activeAnalysisRoot = null; render(); return;
             }
 
-            // ベース音が未設定、もしくは選択解除された場合の自動フォロー
             if (!bassNote || !selected.includes(bassNote)) {
                 bassNote = selected[0];
             }
@@ -94,7 +92,10 @@
             let candidates = Tonal.Chord.detect(selected);
             const upper = selected.filter(n => n !== bassNote);
             if (upper.length >= 2) {
-                Tonal.Chord.detect(upper).forEach(u => candidates.push(`${u.split('/')[0]}/${bassNote}`));
+                Tonal.Chord.detect(upper).forEach(u => {
+                    const main = u.split('/')[0];
+                    candidates.push(`${main}/${bassNote}`);
+                });
             }
 
             let finalCandidates = [...new Set(candidates)].filter(c => {
@@ -153,26 +154,27 @@
                     <span class="interval-label">${intervalLabel}</span>
                 `;
 
-                // 長押しとタップの判定
-                const start = (e) => {
-                    e.preventDefault();
+                const handleStart = (e) => {
+                    if (pressTimer !== null) return;
                     pressTimer = setTimeout(() => {
-                        // 長押し時の挙動: ベース音に指定
+                        // 長押し成功時
                         if (!selected.includes(n)) selected.push(n);
-                        bassNote = n;
+                        bassNote = n; // ここで明示的にベース音を更新
                         if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
                         if (s2f[n]) useSharps = false;
-                        appUpdate();
+                        appUpdate(); 
                         pressTimer = null;
                     }, 500);
                 };
 
-                const end = (e) => {
-                    if (pressTimer) {
+                const handleEnd = (e) => {
+                    if (pressTimer !== null) {
                         clearTimeout(pressTimer);
-                        // 短押し（通常のタップ）の挙動: 選択/解除
+                        pressTimer = null;
+                        // 通常タップ（短押し）
                         if (selected.includes(n)) {
                             selected = selected.filter(x => x !== n);
+                            if (n === bassNote) bassNote = null; 
                         } else {
                             selected.push(n);
                             if (selected.length === 1) bassNote = n;
@@ -183,16 +185,16 @@
                     }
                 };
 
-                btn.onmousedown = start;
-                btn.onmouseup = end;
-                btn.ontouchstart = start;
-                btn.ontouchend = end;
+                btn.onmousedown = handleStart;
+                btn.onmouseup = handleEnd;
+                btn.ontouchstart = handleStart;
+                btn.ontouchend = handleEnd;
 
                 pad.appendChild(btn);
             });
         };
 
-        render();
+            appUpdate();
     </script>
 </body>
 </html>
