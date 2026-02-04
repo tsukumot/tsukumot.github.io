@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Vertical List</title>
+    <title>Chord Lab - Deduplicated</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -12,7 +12,6 @@
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
         #display { background: #000; padding: 15px; border-radius: 10px; min-height: 150px; margin-bottom: 20px; border: 1px solid #444; }
         .chord-list { max-height: 200px; overflow-y: auto; margin-bottom: 10px; }
-        /* リストを縦並びに変更 */
         .chord-item { display: block; font-size: 1.2rem; font-weight: bold; color: #00d1b2; margin-bottom: 5px; border-bottom: 1px solid #222; padding-bottom: 2px; }
         .interval-info { font-size: 0.9rem; color: #ffa502; border-top: 1px solid #333; padding-top: 10px; line-height: 1.6; }
     </style>
@@ -33,7 +32,7 @@
         const semitoneToInterval = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
 
         let selected = [];
-        let bassNote = null; // ベース音を直接保持するように変更
+        let bassNote = null;
         let useSharps = false;
 
         const unify = (text) => {
@@ -50,38 +49,49 @@
                 render(); return;
             }
 
-            // ベース音が未設定、または選択解除された場合は最新の音をベースにする
             if (!bassNote || !selected.includes(bassNote)) {
-                bassNote = selected[selected.length - 1];
+                bassNote = selected[0];
             }
 
             const upper = selected.filter(n => n !== bassNote);
-            
             let candidates = [];
-            if (typeof Tonal !== 'undefined') {
-                const allDet = Tonal.Chord.detect(selected);
-                const upperDet = upper.length > 0 ? Tonal.Chord.detect(upper) : [];
 
-                // 全体解析の結果から、現在のベース音に基づいたオンコード表記を生成
+            if (typeof Tonal !== 'undefined') {
+                // 1. 全体解析
+                const allDet = Tonal.Chord.detect(selected);
+                let rootMatchFound = false;
+
                 allDet.forEach(c => {
                     const info = Tonal.Chord.get(c);
-                    if (Tonal.Note.get(info.tonic).chroma === Tonal.Note.get(bassNote).chroma) {
-                        candidates.push(c);
+                    const isRootBass = Tonal.Note.get(info.tonic).chroma === Tonal.Note.get(bassNote).chroma;
+                    
+                    if (isRootBass) {
+                        // メジャーコード等の基本形
+                        candidates.push(info.name === "major" ? info.tonic : c);
+                        rootMatchFound = true;
                     } else {
-                        const baseName = c.split('/')[0];
-                        candidates.push(`${baseName} / ${bassNote}`);
+                        // 転回形
+                        candidates.push(`${c.split('/')[0]} / ${bassNote}`);
                     }
                 });
 
-                // 上部構造のみの解析結果をオンコードとして追加
-                upperDet.forEach(u => {
-                    const slashName = `${u} / ${bassNote}`;
-                    if (!candidates.includes(slashName)) candidates.push(slashName);
-                });
+                // 2. 上部構造解析 (全体解析でルート一致が見つからない場合、または補足として)
+                if (upper.length > 0) {
+                    const upperDet = Tonal.Chord.detect(upper);
+                    upperDet.forEach(u => {
+                        const slashName = `${u} / ${bassNote}`;
+                        // 全体解析の結果と本質的に同じものは追加しない
+                        if (!candidates.some(existing => existing.split(' ')[0] === u)) {
+                            candidates.push(slashName);
+                        }
+                    });
+                }
             }
 
-            // 重複削除と描画
             const uniqueCandidates = [...new Set(candidates)];
+            // リストを整理: ルートがベースと一致するものを上に、シンプルな名称を優先
+            uniqueCandidates.sort((a, b) => a.length - b.length);
+
             if (uniqueCandidates.length > 0) {
                 out.innerHTML = uniqueCandidates.map(c => `<div class="chord-item">${unify(c)}</div>`).join('');
             } else {
@@ -113,7 +123,6 @@
                         if (bassNote === n) bassNote = null;
                     } else {
                         selected.push(n);
-                        // 新規選択時にベースを勝手に変えないよう、未設定時のみ代入
                         if (!bassNote) bassNote = n;
                         if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
                         if (s2f[n]) useSharps = false;
@@ -124,7 +133,6 @@
             });
         };
 
-        // 表示エリアクリックでベース音をローテーション
         document.getElementById('display').onclick = () => {
             if (selected.length > 0) {
                 const idx = selected.indexOf(bassNote);
