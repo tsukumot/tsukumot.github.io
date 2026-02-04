@@ -14,7 +14,10 @@
         }
         .note-name { font-size: 1.1rem; font-weight: bold; pointer-events: none; }
         .interval-label { font-size: 0.9rem; color: #aaa; margin-top: 4px; pointer-events: none; }
-        .chord-name sup { font-size: 0.7em; vertical-align: super; line-height: 0; margin-left: 0.5px; }
+        
+        /* 上付き文字のスタイル調整 */
+        sup { font-size: 0.7em; vertical-align: super; line-height: 0; }
+        .chord-name sup { margin-left: 0.5px; }
         
         button.selected { background: #007bff; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
@@ -69,9 +72,8 @@
 
         const unifyChordName = (text) => {
             let name = unifySimple(text);
-            const parts = name.split('/');
-            parts[0] = parts[0].replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
-            return parts.join('/');
+            // 分母も含め、全体に対して数字・記号を上付きにする
+            return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
         };
 
         const clearAll = () => {
@@ -83,16 +85,13 @@
             const out = document.getElementById('chord-out');
             if (selected.length === 0) {
                 out.innerText = "SELECT NOTES";
-                activeAnalysisRoot = null;
-                render(); return;
+                activeAnalysisRoot = null; render(); return;
             }
 
-            // ベース音の整合性チェック
             if (!bassNote || !selected.includes(bassNote)) {
                 bassNote = selected[0] || null;
             }
 
-            // 解析ルートの整合性チェック（選択解除された音がルートだった場合、表示を消す）
             if (activeAnalysisRoot && !selected.includes(activeAnalysisRoot)) {
                 activeAnalysisRoot = null;
             }
@@ -117,7 +116,6 @@
                 finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
             }
 
-            // 解析ルートが未設定なら最初の候補をデフォルトにする
             if (finalCandidates.length > 0 && !activeAnalysisRoot) {
                 activeAnalysisRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
             }
@@ -180,7 +178,6 @@
                         if (!isLongPress) {
                             if (selected.includes(n)) {
                                 selected = selected.filter(x => x !== n);
-                                // 解除した音がベースや解析ルートなら null にして appUpdate で再割り当て
                                 if (n === bassNote) bassNote = null;
                                 if (n === activeAnalysisRoot) activeAnalysisRoot = null;
                             } else {
