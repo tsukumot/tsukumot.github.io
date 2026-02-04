@@ -3,45 +3,64 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Working</title>
+    <title>Chord Lab</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
-        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; -webkit-appearance: none; outline: none; }
+        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; }
         button.selected { background: #007bff; font-weight: bold; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
-        #display { background: #000; padding: 20px; border-radius: 10px; text-align: center; min-height: 100px; margin-bottom: 20px; border: 1px solid #444; cursor: pointer; }
-        .chord-main { font-size: 1.6rem; font-weight: bold; color: #00d1b2; margin: 10px 0; }
+        #display { background: #000; padding: 20px; border-radius: 10px; text-align: center; min-height: 100px; margin-bottom: 20px; border: 1px solid #444; }
+        .chord-main { font-size: 1.8rem; font-weight: bold; color: #00d1b2; margin: 10px 0; }
         .interval-info { font-size: 0.9rem; color: #ffa502; }
     </style>
 </head>
 <body>
-    <div id="display">
+    <div id="display" onclick="window.rotateBass()">
         <div id="chord-out" class="chord-main">SELECT NOTES</div>
         <div id="interval-out" class="interval-info"></div>
     </div>
     <div class="grid" id="pad"></div>
 
     <script type="module">
-        // 信頼性の高いCDNからインポート
         import { Chord, Interval } from "https://ga.jspm.io/npm:@tonaljs/tonal@4.10.0/dist/index.mjs";
 
         const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
-        
+
         let selected = [];
         let bassIndex = 0;
         let useSharps = false;
 
-        const forceUnify = (text, toSharp) => {
+        // 表記を統一するだけの純粋な関数（文字列を壊さない）
+        const unify = (text, toSharp) => {
             if (!text) return "";
             return toSharp 
                 ? text.replace(/Db|Eb|Gb|Ab|Bb/g, m => f2s[m] || m)
                 : text.replace(/C#|D#|F#|G#|A#/g, m => s2f[m] || m);
         };
 
-        const update = () => {
+        window.toggle = (n) => {
+            if (selected.includes(n)) {
+                selected = selected.filter(x => x !== n);
+            } else {
+                selected.push(n);
+                // 最後に選んだ音の性質で全体を統一
+                if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
+                if (s2f[n]) useSharps = false;
+            }
+            update();
+        };
+
+        window.rotateBass = () => {
+            if (selected.length > 0) {
+                bassIndex = (bassIndex + 1) % selected.length;
+                update();
+            }
+        };
+
+        function update() {
             const out = document.getElementById('chord-out');
             const ivOut = document.getElementById('interval-out');
             
@@ -52,65 +71,39 @@
                 return;
             }
 
-            const bass = selected[bassIndex % selected.length];
+            const bass = selected[bassIndex];
             const upper = selected.filter(n => n !== bass);
-
-            // 1. 和音解析
+            
             const detected = Chord.detect(upper);
             const upperName = (detected && detected.length > 0) ? detected[0] : upper.join(',');
 
-            // 2. 表示文字列作成（解析結果をそのまま結合）
-            const rawResult = upper.length === 0 ? bass : `${upperName} / ${bass}`;
+            // 表示の直前に統一をかける
+            out.innerText = upper.length === 0 
+                ? unify(bass, useSharps) 
+                : `${unify(upperName, useSharps)} / ${unify(bass, useSharps)}`;
             
-            // 3. 最後に一括で表記を統一（シャープ・フラットを混ぜない）
-            out.innerText = forceUnify(rawResult, useSharps);
-            
-            // 4. 度数計算
             ivOut.innerText = upper.map(n => {
                 const dist = Interval.distance(bass, n);
-                return forceUnify(`${n}:${dist}`, useSharps);
+                return `${unify(n, useSharps)}:${unify(dist, useSharps)}`;
             }).join(' | ');
 
             render();
-        };
+        }
 
-        const render = () => {
+        function render() {
             const pad = document.getElementById('pad');
-            pad.innerHTML = "";
-            rawNotes.forEach(n => {
-                const btn = document.createElement('button');
+            pad.innerHTML = rawNotes.map(n => {
                 const isSelected = selected.includes(n);
-                const isBass = isSelected && selected[bassIndex % selected.length] === n;
-                
-                btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '');
-                btn.innerText = forceUnify(n, useSharps);
-                
-                btn.onclick = () => {
-                    if (selected.includes(n)) {
-                        selected = selected.filter(x => x !== n);
-                    } else {
-                        selected.push(n);
-                        // 表記モードの切り替え
-                        if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
-                        if (s2f[n]) useSharps = false;
-                    }
-                    update();
-                };
-                pad.appendChild(btn);
-            });
-        };
+                const isBass = isSelected && selected[bassIndex] === n;
+                const label = unify(n, useSharps);
+                return `<button class="${isSelected ? 'selected' : ''} ${isBass ? 'bass' : ''}" onclick="window.toggle('${n}')">${label}</button>`;
+            }).join('');
+        }
 
-        // 初期描画
         render();
-
-        // ベース音のローテーションイベント
-        document.getElementById('display').addEventListener('click', () => {
-            if (selected.length > 0) {
-                bassIndex++;
-                update();
-            }
-        });
     </script>
+</body>
+</html>
 </body>
 </html>
             console.error("Library load failed", err);
