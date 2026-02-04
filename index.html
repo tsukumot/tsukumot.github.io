@@ -10,10 +10,11 @@
         button { 
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             padding: 10px 5px; border: none; border-radius: 5px; background: #333; color: white; 
-            min-height: 70px; outline: none; transition: 0.1s;
+            min-height: 75px; outline: none; transition: 0.1s;
         }
         .note-name { font-size: 1.1rem; font-weight: bold; }
-        .interval-label { font-size: 0.8rem; color: #aaa; margin-top: 4px; }
+        .interval-label { font-size: 0.9rem; color: #aaa; margin-top: 4px; }
+        sup { font-size: 0.7em; vertical-align: super; line-height: 0; }
         
         button.selected { background: #007bff; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
@@ -26,24 +27,21 @@
             cursor: pointer; border: 1px solid transparent;
         }
         .chord-item.active { border-color: #00d1b2; background: #2a2a2a; }
-        .chord-name { font-size: 1.4rem; font-weight: bold; color: #00d1b2; }
+        .chord-name { font-size: 1.5rem; font-weight: bold; color: #00d1b2; }
         
-        /* クリアボタンのスタイル */
         #clear-btn {
             position: absolute; top: 10px; right: 10px;
             padding: 8px 15px; background: #444; color: #ccc;
             border: none; border-radius: 5px; font-size: 0.8rem; cursor: pointer;
             z-index: 10;
         }
-        #clear-btn:active { background: #666; }
-
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
     </style>
 </head>
 <body>
     <div id="display">
         <button id="clear-btn" onclick="clearAll()">CLEAR</button>
-        <div class="label">INTERPRETATIONS (Tap to Map Intervals):</div>
+        <div class="label">INTERPRETATIONS:</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
     </div>
     <div class="grid" id="pad"></div>
@@ -64,14 +62,12 @@
         const unify = (text) => {
             if (!text) return "";
             const dict = useSharps ? f2s : s2f;
-            return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
+            let unified = text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
+            return unified.replace(/#/g, '<sup>#</sup>').replace(/b/g, '<sup>b</sup>');
         };
 
         const clearAll = () => {
-            selected = [];
-            bassNote = null;
-            activeAnalysisRoot = null;
-            useSharps = false;
+            selected = []; bassNote = null; activeAnalysisRoot = null; useSharps = false;
             appUpdate();
         };
 
@@ -79,8 +75,7 @@
             const out = document.getElementById('chord-out');
             if (selected.length === 0) {
                 out.innerText = "SELECT NOTES";
-                activeAnalysisRoot = null;
-                render(); return;
+                activeAnalysisRoot = null; render(); return;
             }
 
             if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
@@ -101,7 +96,6 @@
                 return true;
             });
 
-            // 基準となる根音が未設定、または選択解除された場合は最初の候補をセット
             if (finalCandidates.length > 0) {
                 const firstRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
                 if (!activeAnalysisRoot || !selected.includes(activeAnalysisRoot)) {
@@ -135,43 +129,4 @@
                 const isBass = isSelected && bassNote === n;
                 const isRoot = n === activeAnalysisRoot;
 
-                btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '') + (isRoot ? ' is-root' : '');
-                
-                let intervalLabel = "";
-                if (activeAnalysisRoot) {
-                    let d = (rawNotes.indexOf(n) - rawNotes.indexOf(activeAnalysisRoot) + 12) % 12;
-                    intervalLabel = intervalNames[d];
-                }
-
-                btn.innerHTML = `
-                    <span class="note-name">${unify(n)}</span>
-                    <span class="interval-label">${intervalLabel}</span>
-                `;
-
-                btn.onclick = () => {
-                    if (selected.includes(n)) {
-                        selected = selected.filter(x => x !== n);
-                    } else {
-                        selected.push(n);
-                        if (selected.length === 1) bassNote = n;
-                        if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
-                        if (s2f[n]) useSharps = false;
-                    }
-                    appUpdate();
-                };
-                pad.appendChild(btn);
-            });
-        };
-
-        document.getElementById('display').onclick = (e) => {
-            if (e.target.closest('.chord-item') || e.target.id === 'clear-btn') return;
-            if (selected.length > 1) {
-                const idx = selected.indexOf(bassNote);
-                bassNote = selected[(idx + 1) % selected.length];
-                appUpdate();
-            }
-        };
-        render();
-    </script>
-</body>
-</html>
+                btn.className =
