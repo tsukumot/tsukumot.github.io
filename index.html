@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - No Filter</title>
+    <title>Chord Lab - True Interpretation</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -19,7 +19,7 @@
 </head>
 <body>
     <div id="display">
-        <div class="label">DETECTED (NO FILTERS):</div>
+        <div class="label">INTERPRETATIONS (WITH TENSIONS):</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
         <div class="label">INTERVALS FROM BASS:</div>
         <div id="interval-out" class="interval-info"></div>
@@ -32,7 +32,7 @@
         const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
-        const intervalMap = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
+        const semitoneToInterval = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
 
         let selected = [];
         let bassNote = null;
@@ -44,6 +44,29 @@
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
+        const analyzeWithTensions = (root, notes, currentBass) => {
+            // Tonal.jsのdetectをベースに、不足している音をテンションとして補完する
+            const results = Tonal.Chord.detect(notes, { assumeRoot: root });
+            
+            if (results.length > 0) return results[0]; // 既製品があればそれを返す
+
+            // ライブラリで見つからない場合、サブセットから基本和音を探し、残りをadd/tension表記にする
+            for (let i = 0; i < notes.length; i++) {
+                const subset = notes.filter((_, idx) => idx !== i);
+                if (subset.length < 3) continue;
+                
+                const baseChords = Tonal.Chord.detect(subset, { assumeRoot: root });
+                if (baseChords.length > 0) {
+                    const extraNote = notes[i];
+                    let diff = rawNotes.indexOf(extraNote) - rawNotes.indexOf(root);
+                    if (diff < 0) diff += 12;
+                    const tension = semitoneToInterval[diff].replace("b2", "♭9").replace("2", "9").replace("b5", "♭5").replace("b6", "♭13");
+                    return `${baseChords[0]}add${tension}`;
+                }
+            }
+            return null;
+        };
+
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             const ivOut = document.getElementById('interval-out');
@@ -53,17 +76,32 @@
                 render(); return;
             }
 
-            if (!bassNote || !selected.includes(bassNote)) {
-                bassNote = selected[0];
+            if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
+            const upper = selected.filter(n => n !== bassNote);
+            let candidates = [];
+
+            if (typeof Tonal !== 'undefined') {
+                // 1. 全音を対象に各音をルートとして解析（add表記対応）
+                selected.forEach(r => {
+                    const res = analyzeWithTensions(r, selected, bassNote);
+                    if (res) {
+                        if (Tonal.Note.get(r).chroma === Tonal.Note.get(bassNote).chroma) candidates.push(res);
+                        else candidates.push(`${res}/${bassNote}`);
+                    }
+                });
+
+                // 2. 上部構造のみでの解析
+                if (upper.length >= 3) {
+                    upper.forEach(r => {
+                        const res = analyzeWithTensions(r, upper, bassNote);
+                        if (res) candidates.push(`${res}/${bassNote}`);
+                    });
+                }
             }
 
-            const upper = selected.filter(n => n !== bassNote);
-            
-            // ライブラリの「本来の能力」をそのまま使う（勝手な制限をしない）
-            const results = Tonal.Chord.detect(selected);
-
-            if (results.length > 0) {
-                out.innerHTML = results.map(c => `<div class="chord-item">${unify(c)}</div>`).join('');
+            const uniqueCandidates = [...new Set(candidates)];
+            if (uniqueCandidates.length > 0) {
+                out.innerHTML = uniqueCandidates.map(c => `<div class="chord-item">${unify(c)}</div>`).join('');
             } else {
                 out.innerHTML = `<div class="chord-item">No Interpretation found</div>`;
             }
@@ -71,7 +109,7 @@
             ivOut.innerText = upper.map(n => {
                 let d = rawNotes.indexOf(n) - rawNotes.indexOf(bassNote);
                 if (d < 0) d += 12;
-                return `${unify(n)}:${unify(intervalMap[d])}`;
+                return `${unify(n)}:${unify(semitoneToInterval[d])}`;
             }).join(' | ');
 
             render();
