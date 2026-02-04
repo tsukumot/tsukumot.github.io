@@ -14,13 +14,13 @@
         .chord-list { max-height: 240px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
         .chord-item { display: block; margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 6px; }
         .chord-name { font-size: 1.4rem; font-weight: bold; color: #00d1b2; }
-        .structure-info { font-size: 0.9rem; color: #ffa502; margin-top: 4px; }
+        .structure-info { font-size: 1.0rem; color: #ffa502; margin-top: 4px; font-family: monospace; }
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
     </style>
 </head>
 <body>
     <div id="display">
-        <div class="label">INTERPRETATIONS (Root-based Analysis):</div>
+        <div class="label">INTERPRETATIONS:</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
     </div>
     <div class="grid" id="pad"></div>
@@ -50,13 +50,9 @@
                 render(); return;
             }
 
-            // ベース音（一番低い音として扱う音）の決定
             if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
 
-            // Tonal.jsで候補を抽出
             let candidates = Tonal.Chord.detect(selected);
-            
-            // ベース音を分母とした上部構造の解析を追加
             const upper = selected.filter(n => n !== bassNote);
             if (upper.length >= 2) {
                 Tonal.Chord.detect(upper).forEach(u => {
@@ -65,31 +61,42 @@
                 });
             }
 
-            const uniqueCandidates = [...new Set(candidates)];
+            // 重複排除とフィルタリング
+            let finalCandidates = [...new Set(candidates)].filter(c => {
+                // パワーコードの分数表記は、他に候補があれば消す
+                if (c.includes('5/') && candidates.length > 1) return false;
+                // ベースとルートが同じなら分数表記を消す
+                const parts = c.split('/');
+                if (parts.length === 2) {
+                    const r = Tonal.Chord.get(parts[0]).tonic;
+                    if (r && Tonal.Note.get(r).chroma === Tonal.Note.get(bassNote).chroma) return false;
+                }
+                return true;
+            });
 
-            if (uniqueCandidates.length > 0) {
-                out.innerHTML = uniqueCandidates.map(c => {
-                    const chord = Tonal.Chord.get(c);
-                    const root = chord.tonic || c.split('/')[0].replace(/[0-9km].*/, ''); 
+            if (finalCandidates.length > 0) {
+                out.innerHTML = finalCandidates.map(c => {
+                    const chord = Tonal.Chord.get(c.split('/')[0]);
+                    const root = chord.tonic;
+                    if (!root) return `<div class="chord-item"><div class="chord-name">${unify(c)}</div></div>`;
                     
-                    // 根音（Root）から見た各音の度数を計算
+                    // 根音（Root）から見たStructure計算
                     const structure = selected.map(n => {
                         let d = (rawNotes.indexOf(n) - rawNotes.indexOf(root) + 12) % 12;
                         return intervalNames[d];
                     }).sort((a, b) => {
                         const rank = {"1":0,"b2":1,"2":2,"b3":3,"3":4,"4":5,"b5":6,"5":7,"b6":8,"6":9,"b7":10,"7":11};
                         return rank[a] - rank[b];
-                    }).join(' - ');
+                    }).join(', ');
 
                     return `<div class="chord-item">
                                 <div class="chord-name">${unify(c)}</div>
-                                <div class="structure-info">Root: ${unify(root)} | Structure: ${structure}</div>
+                                <div class="structure-info">Structure: ${structure}</div>
                             </div>`;
                 }).join('');
             } else {
                 out.innerHTML = `<div class="chord-item">No chord found</div>`;
             }
-
             render();
         };
 
