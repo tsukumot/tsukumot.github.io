@@ -79,12 +79,63 @@
             appUpdate();
         };
 
+
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             if (selected.length === 0) {
                 out.innerText = "SELECT NOTES";
                 activeAnalysisRoot = null; render(); return;
             }
+
+            if (!bassNote || !selected.includes(bassNote)) {
+                bassNote = selected[0];
+            }
+
+            // 全ての候補に対して、一旦分母を取り除き、現在のbassNoteを付け直す
+            let rawCandidates = Tonal.Chord.detect(selected);
+            
+            // upper notes（ベース以外）での解析も追加
+            const upper = selected.filter(n => n !== bassNote);
+            if (upper.length >= 2) {
+                Tonal.Chord.detect(upper).forEach(u => rawCandidates.push(u));
+            }
+
+            let finalCandidates = [...new Set(rawCandidates)].map(c => {
+                const main = c.split('/')[0]; // 元の候補から分母を捨てる
+                
+                // 根音（Root）と指定ベースが同じならそのまま、違うなら分数コードにする
+                const root = Tonal.Chord.get(main).tonic;
+                if (root && Tonal.Note.get(root).chroma === Tonal.Note.get(bassNote).chroma) {
+                    return main;
+                } else {
+                    return `${main}/${bassNote}`;
+                }
+            });
+
+            // パワーコード(5)の分数表記フィルタリング
+            if (finalCandidates.length > 1) {
+                finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
+            }
+
+            if (finalCandidates.length > 0) {
+                const firstRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
+                if (!activeAnalysisRoot || !selected.includes(activeAnalysisRoot)) {
+                    activeAnalysisRoot = firstRoot;
+                }
+            }
+
+            out.innerHTML = finalCandidates.map(c => {
+                const root = Tonal.Chord.get(c.split('/')[0]).tonic;
+                const isActive = root === activeAnalysisRoot;
+                return `
+                    <div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${root}')">
+                        <div class="chord-name">${unifyChordName(c)}</div>
+                    </div>`;
+            }).join('');
+
+            render();
+        };
+
 
             if (!bassNote || !selected.includes(bassNote)) {
                 bassNote = selected[0];
