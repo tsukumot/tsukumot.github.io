@@ -11,7 +11,7 @@
         button.selected { background: #007bff; font-weight: bold; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
         #display { background: #000; padding: 20px; border-radius: 10px; text-align: center; min-height: 100px; margin-bottom: 20px; border: 1px solid #444; }
-        .chord-main { font-size: 1.8rem; font-weight: bold; color: #00d1b2; margin: 10px 0; }
+        .chord-main { font-size: 1.6rem; font-weight: bold; color: #00d1b2; margin: 10px 0; }
         .interval-info { font-size: 0.9rem; color: #ffa502; }
     </style>
 </head>
@@ -25,23 +25,23 @@
     <script type="module">
         import { Chord, Interval } from "https://ga.jspm.io/npm:@tonaljs/tonal@4.10.0/dist/index.mjs";
 
+        // 内部保持用の12半音（シャープ表記に統一して管理）
         const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         let selected = [];
         let bassIndex = 0;
-        let useSharps = false; // デフォルトはフラット
+        let useSharps = false; // デフォルトはフラット（ユーフォニアム実音想定）
 
-        // 文字列全体に対して、全ての # を b に（あるいはその逆に）変換する
-        // 音名だけでなくテンション記号（#11など）も全て対象にする
+        // 正確な異名同音変換マップ
+        const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
+        const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
+
+        // 文字列全体から、指定した系（# or b）へ一括変換する（正規表現で一発置換）
         const forceUnify = (text, toSharp) => {
-            const sharpToFlat = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb', '#':'#', 'b':'b' };
-            const flatToSharp = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#', '#':'#', 'b':'b' };
-            
+            if (!text) return "";
             if (toSharp) {
-                // シャープに統一：bを#に置換
-                return text.replace(/Db/g, 'C#').replace(/Eb/g, 'D#').replace(/Gb/g, 'F#').replace(/Ab/g, 'G#').replace(/Bb/g, 'A#');
+                return text.replace(/Db|Eb|Gb|Ab|Bb/g, m => f2s[m] || m);
             } else {
-                // フラットに統一：#をbに置換
-                return text.replace(/C#/g, 'Db').replace(/D#/g, 'Eb').replace(/F#/g, 'Gb').replace(/G#/g, 'Ab').replace(/A#/g, 'Bb');
+                return text.replace(/C#|D#|F#|G#|A#/g, m => s2f[m] || m);
             }
         };
 
@@ -50,7 +50,7 @@
                 selected = selected.filter(x => x !== n);
             } else {
                 selected.push(n);
-                // 選択した音に合わせて全体のモードを切り替え
+                // 選択した音に合わせて全体の表記モードを切り替え
                 if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
                 if (['Db','Eb','Gb','Ab','Bb'].includes(forceUnify(n, false))) useSharps = false;
             }
@@ -79,14 +79,14 @@
             const upper = selected.filter(n => n !== bass);
             
             const detected = Chord.detect(upper);
-            const upperName = detected.length > 0 ? detected[0] : upper.join(',');
+            const upperName = (detected && detected.length > 0) ? detected[0] : upper.join(',');
 
-            // 出力文字列を生成してから、最後に一括で「全置換」して統一を保証する
             const rawResult = upper.length === 0 ? bass : `${upperName} / ${bass}`;
             out.innerText = forceUnify(rawResult, useSharps);
             
             ivOut.innerText = upper.map(n => {
                 const dist = Interval.distance(bass, n);
+                // 度数表記(例: 2#)などのシャープも一律で置換対象にする
                 return forceUnify(`${n}:${dist}`, useSharps);
             }).join(' | ');
 
@@ -102,6 +102,7 @@
                 return `<button class="${isSelected ? 'selected' : ''} ${isBass ? 'bass' : ''}" onclick="window.toggle('${n}')">${label}</button>`;
             }).join('');
         }
+
         render();
     </script>
 </body>
