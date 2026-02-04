@@ -129,4 +129,43 @@
                 const isBass = isSelected && bassNote === n;
                 const isRoot = n === activeAnalysisRoot;
 
-                btn.className =
+                btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '') + (isRoot ? ' is-root' : '');
+                
+                let intervalLabel = "";
+                if (activeAnalysisRoot) {
+                    let d = (rawNotes.indexOf(n) - rawNotes.indexOf(activeAnalysisRoot) + 12) % 12;
+                    intervalLabel = unify(intervalNames[d]); // 度数の b も上付きにする
+                }
+
+                btn.innerHTML = `
+                    <span class="note-name">${unify(n)}</span>
+                    <span class="interval-label">${intervalLabel}</span>
+                `;
+
+                btn.onclick = () => {
+                    if (selected.includes(n)) {
+                        selected = selected.filter(x => x !== n);
+                    } else {
+                        selected.push(n);
+                        if (selected.length === 1) bassNote = n;
+                        if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
+                        if (s2f[n]) useSharps = false;
+                    }
+                    appUpdate();
+                };
+                pad.appendChild(btn);
+            });
+        };
+
+        document.getElementById('display').onclick = (e) => {
+            if (e.target.closest('.chord-item') || e.target.id === 'clear-btn') return;
+            if (selected.length > 1) {
+                const idx = selected.indexOf(bassNote);
+                bassNote = selected[(idx + 1) % selected.length];
+                appUpdate();
+            }
+        };
+        render();
+    </script>
+</body>
+</html>
