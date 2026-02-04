@@ -101,12 +101,25 @@
             return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
         };
  
+
+        // 現在鳴っている音源（オシレーター）を保持する配列
+        let activeOscillators = [];
+
         const playChord = (rootName) => {
             if (!audioCtx) return;
-            // 基準の高さ（第3オクターブ）
+
+            // 1. 前に鳴っている音があればすべて止める
+            activeOscillators.forEach(osc => {
+                try {
+                    osc.stop();
+                } catch (e) {
+                    // すでに停止している場合は無視
+                }
+            });
+            activeOscillators = []; // 配列をリセット
+
             const rootFreq = Tonal.Note.freq(rootName + "3");
             const rootChroma = Tonal.Note.get(rootName).chroma;
-            
             const duration = 5.0;
 
             selected.forEach(noteName => {
@@ -123,7 +136,6 @@
                     targetFreq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", interval));
                 }
 
-                // 【追加】もしこの音が現在指定されているベース音なら、1オクターブ下げる
                 if (noteName === bassNote) {
                     targetFreq = targetFreq * 0.5;
                 }
@@ -139,10 +151,15 @@
 
                 osc.connect(gain);
                 gain.connect(audioCtx.destination);
+                
                 osc.start();
                 osc.stop(audioCtx.currentTime + duration);
+
+                // 2. この音源を管理配列に追加
+                activeOscillators.push(osc);
             });
         };
+
 
         const clearAll = () => {
             selected = []; bassNote = null; activeAnalysisRoot = null;
