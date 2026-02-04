@@ -3,26 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Final Stable</title>
+    <title>Chord Lab - Musical Analysis</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
         button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; outline: none; }
         button.selected { background: #007bff; font-weight: bold; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
-        #display { background: #000; padding: 15px; border-radius: 10px; min-height: 180px; margin-bottom: 20px; border: 1px solid #444; }
-        .chord-list { max-height: 220px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
-        .chord-item { display: block; font-size: 1.25rem; font-weight: bold; color: #00d1b2; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 4px; }
-        .interval-info { font-size: 1.1rem; color: #ffa502; font-weight: bold; }
+        #display { background: #000; padding: 15px; border-radius: 10px; min-height: 200px; margin-bottom: 20px; border: 1px solid #444; }
+        .chord-list { max-height: 240px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
+        .chord-item { display: block; margin-bottom: 12px; border-bottom: 1px solid #222; padding-bottom: 6px; }
+        .chord-name { font-size: 1.4rem; font-weight: bold; color: #00d1b2; }
+        .structure-info { font-size: 0.9rem; color: #ffa502; margin-top: 4px; }
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
     </style>
 </head>
 <body>
     <div id="display">
-        <div class="label">ANALYSIS:</div>
+        <div class="label">INTERPRETATIONS (Root-based Analysis):</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
-        <div class="label">INTERVALS FROM BASS:</div>
-        <div id="interval-out" class="interval-info"></div>
     </div>
     <div class="grid" id="pad"></div>
 
@@ -32,7 +31,7 @@
         const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
-        const intervalMap = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
+        const intervalNames = ["1", "b2", "2", "b3", "3", "4", "b5", "5", "b6", "6", "b7", "7"];
 
         let selected = [];
         let bassNote = null;
@@ -46,54 +45,50 @@
 
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
-            const ivOut = document.getElementById('interval-out');
-            
             if (selected.length === 0) {
-                out.innerText = "---"; ivOut.innerText = "---";
+                out.innerText = "SELECT NOTES";
                 render(); return;
             }
 
+            // ベース音（一番低い音として扱う音）の決定
             if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
+
+            // Tonal.jsで候補を抽出
+            let candidates = Tonal.Chord.detect(selected);
+            
+            // ベース音を分母とした上部構造の解析を追加
             const upper = selected.filter(n => n !== bassNote);
-
-            let candidates = [];
-
-            if (typeof Tonal !== 'undefined') {
-                // 1. 全体での検出
-                Tonal.Chord.detect(selected).forEach(c => candidates.push(c));
-
-                // 2. 上部構造の解析（二重スラッシュを防止）
-                if (upper.length >= 2) {
-                    Tonal.Chord.detect(upper).forEach(u => {
-                        const mainPart = u.split('/')[0];
-                        candidates.push(`${mainPart}/${bassNote}`);
-                    });
-                }
+            if (upper.length >= 2) {
+                Tonal.Chord.detect(upper).forEach(u => {
+                    const main = u.split('/')[0];
+                    candidates.push(`${main}/${bassNote}`);
+                });
             }
 
-            // 表記の整理（重複削除と、ルート/ベース一致時のスラッシュ消去）
-            const finalResults = [...new Set(candidates)].map(c => {
-                const parts = c.split('/');
-                if (parts.length === 2) {
-                    const chordInfo = Tonal.Chord.get(parts[0]);
-                    if (chordInfo && chordInfo.tonic) {
-                        const rootChroma = Tonal.Note.get(chordInfo.tonic).chroma;
-                        const bassChroma = Tonal.Note.get(bassNote).chroma;
-                        if (rootChroma === bassChroma) return parts[0];
-                    }
-                }
-                return c;
-            });
+            const uniqueCandidates = [...new Set(candidates)];
 
-            const uniqueFinal = [...new Set(finalResults)];
-            out.innerHTML = uniqueFinal.length > 0 
-                ? uniqueFinal.map(c => `<div class="chord-item">${unify(c)}</div>`).join('')
-                : `<div class="chord-item">No chord found</div>`;
+            if (uniqueCandidates.length > 0) {
+                out.innerHTML = uniqueCandidates.map(c => {
+                    const chord = Tonal.Chord.get(c);
+                    const root = chord.tonic || c.split('/')[0].replace(/[0-9km].*/, ''); 
+                    
+                    // 根音（Root）から見た各音の度数を計算
+                    const structure = selected.map(n => {
+                        let d = (rawNotes.indexOf(n) - rawNotes.indexOf(root) + 12) % 12;
+                        return intervalNames[d];
+                    }).sort((a, b) => {
+                        const rank = {"1":0,"b2":1,"2":2,"b3":3,"3":4,"4":5,"b5":6,"5":7,"b6":8,"6":9,"b7":10,"7":11};
+                        return rank[a] - rank[b];
+                    }).join(' - ');
 
-            ivOut.innerText = upper.map(n => {
-                let d = (rawNotes.indexOf(n) - rawNotes.indexOf(bassNote) + 12) % 12;
-                return `${unify(n)}:${unify(intervalMap[d])}`;
-            }).join(' | ');
+                    return `<div class="chord-item">
+                                <div class="chord-name">${unify(c)}</div>
+                                <div class="structure-info">Root: ${unify(root)} | Structure: ${structure}</div>
+                            </div>`;
+                }).join('');
+            } else {
+                out.innerHTML = `<div class="chord-item">No chord found</div>`;
+            }
 
             render();
         };
@@ -122,7 +117,6 @@
             });
         };
 
-            // 表示エリアをクリックでベース音を切り替え
         document.getElementById('display').onclick = () => {
             if (selected.length > 1) {
                 const idx = selected.indexOf(bassNote);
