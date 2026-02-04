@@ -100,13 +100,13 @@
             let name = unifySimple(text);
             return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
         };
-
+ 
         const playChord = (rootName) => {
             if (!audioCtx) return;
+            // 基準の高さ（第3オクターブ）
             const rootFreq = Tonal.Note.freq(rootName + "3");
             const rootChroma = Tonal.Note.get(rootName).chroma;
             
-            // 再生時間を5秒に設定
             const duration = 5.0;
 
             selected.forEach(noteName => {
@@ -123,15 +123,18 @@
                     targetFreq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", interval));
                 }
 
+                // 【追加】もしこの音が現在指定されているベース音なら、1オクターブ下げる
+                if (noteName === bassNote) {
+                    targetFreq = targetFreq * 0.5;
+                }
+
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
                 osc.type = 'triangle';
                 osc.frequency.value = targetFreq;
                 
-                // フェードインと長めのフェードアウト
                 gain.gain.setValueAtTime(0, audioCtx.currentTime);
                 gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.1);
-                // 終了間際にフェードアウトを開始
                 gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
 
                 osc.connect(gain);
