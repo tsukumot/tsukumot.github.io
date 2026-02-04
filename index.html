@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Priority Search</title>
+    <title>Chord Lab - Raw List</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
@@ -11,16 +11,15 @@
         button.selected { background: #007bff; font-weight: bold; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
         #display { background: #000; padding: 15px; border-radius: 10px; min-height: 180px; margin-bottom: 20px; border: 1px solid #444; }
-        .chord-list { max-height: 140px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
-        .chord-item { display: block; font-size: 1.3rem; font-weight: bold; color: #00d1b2; margin-bottom: 8px; }
-        .chord-item.high-prob { color: #fffa65; } /* 確度が高いものに色付け */
+        .chord-list { max-height: 200px; overflow-y: auto; margin-bottom: 10px; border-bottom: 1px solid #333; }
+        .chord-item { display: block; font-size: 1.3rem; font-weight: bold; color: #00d1b2; margin-bottom: 8px; border-bottom: 1px solid #222; padding-bottom: 4px; }
         .interval-info { font-size: 1rem; color: #ffa502; font-weight: bold; }
         .label { font-size: 0.7rem; color: #888; margin-bottom: 4px; }
     </style>
 </head>
 <body>
     <div id="display">
-        <div class="label">SUGGESTED CHORDS (Ranked by Probability):</div>
+        <div class="label">ALL DETECTED CANDIDATES:</div>
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
         <div class="label">INTERVALS FROM BASS:</div>
         <div id="interval-out" class="interval-info"></div>
@@ -45,18 +44,6 @@
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
-        const getScore = (chordName, bass) => {
-            const info = Tonal.Chord.get(chordName.split(' / ')[0]);
-            let score = 0;
-            // 1. ベースがルートと一致なら高得点
-            if (Tonal.Note.get(info.tonic).chroma === Tonal.Note.get(bass).chroma) score += 100;
-            // 2. メジャー/マイナーなどの基本形は加点
-            if (["major", "minor", ""].includes(info.type)) score += 50;
-            // 3. 複雑な記号(omit, #, b)が多ければ減点
-            score -= (chordName.length * 2);
-            return score;
-        };
-
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             const ivOut = document.getElementById('interval-out');
@@ -65,39 +52,44 @@
                 render(); return;
             }
 
-            if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0];
+            if (!bassNote || !selected.includes(bassNote)) {
+                bassNote = selected[0];
+            }
+
             const upper = selected.filter(n => n !== bassNote);
             let candidates = [];
 
             if (typeof Tonal !== 'undefined') {
+                // 1. 全体解析の結果をそのまま入れる
                 const allDet = Tonal.Chord.detect(selected);
-                const upperDet = upper.length > 0 ? Tonal.Chord.detect(upper) : [];
-
                 allDet.forEach(c => {
                     const info = Tonal.Chord.get(c);
-                    if (Tonal.Note.get(info.tonic).chroma === Tonal.Note.get(bassNote).chroma) {
-                        candidates.push({name: info.symbol, score: getScore(info.symbol, bassNote)});
+                    // ルートがベースと違う場合はオンコード表記にする
+                    if (Tonal.Note.get(info.tonic).chroma !== Tonal.Note.get(bassNote).chroma) {
+                        candidates.push(`${info.symbol} / ${bassNote}`);
                     } else {
-                        const name = `${info.symbol} / ${bassNote}`;
-                        candidates.push({name: name, score: getScore(name, bassNote)});
+                        candidates.push(info.symbol);
                     }
                 });
 
-                upperDet.forEach(u => {
-                    const name = `${u} / ${bassNote}`;
-                    candidates.push({name: name, score: getScore(name, bassNote)});
-                });
+                // 2. 上部構造の解析結果をオンコードとして追加
+                if (upper.length > 0) {
+                    const upperDet = Tonal.Chord.detect(upper);
+                    upperDet.forEach(u => {
+                        candidates.push(`${u} / ${bassNote}`);
+                    });
+                }
             }
 
-            // スコア順にソートして描画
-            candidates.sort((a, b) => b.score - a.score);
-            const uniqueNames = [...new Set(candidates.map(c => c.name))];
-            
-            out.innerHTML = uniqueNames.map((name, i) => {
-                const cssClass = i === 0 ? "chord-item high-prob" : "chord-item";
-                return `<div class="${cssClass}">${unify(name)}</div>`;
-            }).join('');
+            const uniqueCandidates = [...new Set(candidates)];
+            if (uniqueCandidates.length > 0) {
+                out.innerHTML = uniqueCandidates.map(c => `<div class="chord-item">${unify(c)}</div>`).join('');
+            } else {
+                const manual = upper.length === 0 ? bassNote : `${upper.join(',')} / ${bassNote}`;
+                out.innerHTML = `<div class="chord-item">${unify(manual)}</div>`;
+            }
 
+            // 度数計算
             ivOut.innerText = upper.map(n => {
                 let diff = rawNotes.indexOf(n) - rawNotes.indexOf(bassNote);
                 if (diff < 0) diff += 12;
@@ -139,6 +131,7 @@
                 appUpdate();
             }
         };
+
         render();
     </script>
 </body>
