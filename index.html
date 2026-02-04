@@ -40,7 +40,7 @@
         .label { font-size: 0.75rem; color: #888; margin-bottom: 6px; }
     </style>
 </head>
-<body>
+<body onpointerdown="initAudio()">
     <div id="display">
         <button id="clear-btn" onclick="clearAll()">CLEAR</button>
         <div class="label">INTERPRETATIONS:</div>
@@ -51,30 +51,11 @@
     <script src="https://cdn.jsdelivr.net/npm/@tonaljs/tonal/browser/tonal.min.js"></script>
 
     <script>
-        // 基本の12音（クロマチック）
         const baseChromatic = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
         const intervalNames = ["R", "m2", "M2", "m3", "M3", "P4", "-5", "P5", "+5", "M6", "m7", "M7"];
 
-        // URLクエリから開始音を取得して配列を並び替える
-        const getRawNotes = () => {
-            const params = new URLSearchParams(window.location.search);
-            let startNote = params.get('start') || 'C';
-            
-            // #やbの正規化
-            if (f2s[startNote]) startNote = f2s[startNote];
-            
-            const startIndex = baseChromatic.indexOf(startNote.toUpperCase());
-            if (startIndex === -1) return [...baseChromatic]; // 不正な入力ならCから
-            
-            return [
-                ...baseChromatic.slice(startIndex),
-                ...baseChromatic.slice(0, startIndex)
-            ];
-        };
-
-        const rawNotes = getRawNotes();
         let selected = [];
         let bassNote = null;
         let activeAnalysisRoot = null; 
@@ -82,7 +63,26 @@
         let pressTimer = null;
         let isLongPress = false;
 
-        // 音名変換のロジック（Bb始まりならフラット優先にするなどの初期設定）
+        // Audio Context
+        let audioCtx = null;
+        const initAudio = () => {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            } else if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        };
+
+        const getRawNotes = () => {
+            const params = new URLSearchParams(window.location.search);
+            let startNote = params.get('start') || 'C';
+            if (f2s[startNote]) startNote = f2s[startNote];
+            const startIndex = baseChromatic.indexOf(startNote.toUpperCase());
+            if (startIndex === -1) return [...baseChromatic];
+            return [...baseChromatic.slice(startIndex), ...baseChromatic.slice(0, startIndex)];
+        };
+
+        const rawNotes = getRawNotes();
         const params = new URLSearchParams(window.location.search);
         if (params.get('start')?.includes('b') || params.get('start') === 'F') {
             useSharps = false;
@@ -99,6 +99,42 @@
         const unifyChordName = (text) => {
             let name = unifySimple(text);
             return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
+        };
+
+        const playChord = (rootName) => {
+            if (!audioCtx) return;
+            const rootFreq = Tonal.Note.freq(rootName + "3");
+            const rootChroma = Tonal.Note.get(rootName).chroma;
+
+            selected.forEach(noteName => {
+                const noteChroma = Tonal.Note.get(noteName).chroma;
+                const semitones = (noteChroma - rootChroma + 12) % 12;
+
+                let targetFreq;
+                if (semitones === 4) { // M3
+                    targetFreq = rootFreq * 1.25;
+                } else if (semitones === 3) { // m3
+                    targetFreq = rootFreq * 1.2;
+                } else {
+                    // 他は平均律
+                    const interval = Tonal.Interval.fromSemitones(semitones);
+                    targetFreq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", interval));
+                }
+
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                osc.type = 'triangle';
+                osc.frequency.value = targetFreq;
+                
+                gain.gain.setValueAtTime(0, audioCtx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1.5);
+
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + 1.5);
+            });
         };
 
         const clearAll = () => {
@@ -149,7 +185,7 @@
                 const root = Tonal.Chord.get(c.split('/')[0]).tonic;
                 const isActive = root === activeAnalysisRoot;
                 return `
-                    <div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${root}')">
+                    <div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${root}'); playChord('${root}')">
                         <div class="chord-name">${unifyChordName(c)}</div>
                     </div>`;
             }).join('');
@@ -175,7 +211,6 @@
                 
                 let intervalLabel = "";
                 if (activeAnalysisRoot) {
-                    // クロマチックindexで度数を計算
                     let d = (baseChromatic.indexOf(n) - baseChromatic.indexOf(activeAnalysisRoot) + 12) % 12;
                     intervalLabel = intervalNames[d];
                 }
