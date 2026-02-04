@@ -79,31 +79,32 @@
             appUpdate();
         };
 
-
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             if (selected.length === 0) {
                 out.innerText = "SELECT NOTES";
-                activeAnalysisRoot = null; render(); return;
+                activeAnalysisRoot = null;
+                render(); return;
             }
 
+            // ベース音の整合性チェック
             if (!bassNote || !selected.includes(bassNote)) {
-                bassNote = selected[0];
+                bassNote = selected[0] || null;
             }
 
-            // 全ての候補に対して、一旦分母を取り除き、現在のbassNoteを付け直す
+            // 解析ルートの整合性チェック（選択解除された音がルートだった場合、表示を消す）
+            if (activeAnalysisRoot && !selected.includes(activeAnalysisRoot)) {
+                activeAnalysisRoot = null;
+            }
+
             let rawCandidates = Tonal.Chord.detect(selected);
-            
-            // upper notes（ベース以外）での解析も追加
             const upper = selected.filter(n => n !== bassNote);
             if (upper.length >= 2) {
                 Tonal.Chord.detect(upper).forEach(u => rawCandidates.push(u));
             }
 
             let finalCandidates = [...new Set(rawCandidates)].map(c => {
-                const main = c.split('/')[0]; // 元の候補から分母を捨てる
-                
-                // 根音（Root）と指定ベースが同じならそのまま、違うなら分数コードにする
+                const main = c.split('/')[0];
                 const root = Tonal.Chord.get(main).tonic;
                 if (root && Tonal.Note.get(root).chroma === Tonal.Note.get(bassNote).chroma) {
                     return main;
@@ -112,16 +113,13 @@
                 }
             });
 
-            // パワーコード(5)の分数表記フィルタリング
             if (finalCandidates.length > 1) {
                 finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
             }
 
-            if (finalCandidates.length > 0) {
-                const firstRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
-                if (!activeAnalysisRoot || !selected.includes(activeAnalysisRoot)) {
-                    activeAnalysisRoot = firstRoot;
-                }
+            // 解析ルートが未設定なら最初の候補をデフォルトにする
+            if (finalCandidates.length > 0 && !activeAnalysisRoot) {
+                activeAnalysisRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
             }
 
             out.innerHTML = finalCandidates.map(c => {
@@ -163,7 +161,6 @@
                     <span class="interval-label">${intervalLabel}</span>
                 `;
 
-                // Pointer Events で統一
                 btn.onpointerdown = (e) => {
                     isLongPress = false;
                     pressTimer = setTimeout(() => {
@@ -183,7 +180,9 @@
                         if (!isLongPress) {
                             if (selected.includes(n)) {
                                 selected = selected.filter(x => x !== n);
-                                if (n === bassNote) bassNote = null; 
+                                // 解除した音がベースや解析ルートなら null にして appUpdate で再割り当て
+                                if (n === bassNote) bassNote = null;
+                                if (n === activeAnalysisRoot) activeAnalysisRoot = null;
                             } else {
                                 selected.push(n);
                                 if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
