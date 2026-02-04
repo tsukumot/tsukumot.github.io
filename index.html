@@ -51,19 +51,44 @@
     <script src="https://cdn.jsdelivr.net/npm/@tonaljs/tonal/browser/tonal.min.js"></script>
 
     <script>
-        const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        // 基本の12音（クロマチック）
+        const baseChromatic = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
-        
-        // 指定の形式に合わせたインターバル表記
         const intervalNames = ["R", "m2", "M2", "m3", "M3", "P4", "-5", "P5", "+5", "M6", "m7", "M7"];
 
+        // URLクエリから開始音を取得して配列を並び替える
+        const getRawNotes = () => {
+            const params = new URLSearchParams(window.location.search);
+            let startNote = params.get('start') || 'C';
+            
+            // #やbの正規化
+            if (f2s[startNote]) startNote = f2s[startNote];
+            
+            const startIndex = baseChromatic.indexOf(startNote.toUpperCase());
+            if (startIndex === -1) return [...baseChromatic]; // 不正な入力ならCから
+            
+            return [
+                ...baseChromatic.slice(startIndex),
+                ...baseChromatic.slice(0, startIndex)
+            ];
+        };
+
+        const rawNotes = getRawNotes();
         let selected = [];
         let bassNote = null;
         let activeAnalysisRoot = null; 
         let useSharps = false;
         let pressTimer = null;
         let isLongPress = false;
+
+        // 音名変換のロジック（Bb始まりならフラット優先にするなどの初期設定）
+        const params = new URLSearchParams(window.location.search);
+        if (params.get('start')?.includes('b') || params.get('start') === 'F') {
+            useSharps = false;
+        } else if (params.get('start')?.includes('#')) {
+            useSharps = true;
+        }
 
         const unifySimple = (text) => {
             if (!text) return "";
@@ -77,7 +102,7 @@
         };
 
         const clearAll = () => {
-            selected = []; bassNote = null; activeAnalysisRoot = null; useSharps = false;
+            selected = []; bassNote = null; activeAnalysisRoot = null;
             appUpdate();
         };
 
@@ -150,7 +175,8 @@
                 
                 let intervalLabel = "";
                 if (activeAnalysisRoot) {
-                    let d = (rawNotes.indexOf(n) - rawNotes.indexOf(activeAnalysisRoot) + 12) % 12;
+                    // クロマチックindexで度数を計算
+                    let d = (baseChromatic.indexOf(n) - baseChromatic.indexOf(activeAnalysisRoot) + 12) % 12;
                     intervalLabel = intervalNames[d];
                 }
 
