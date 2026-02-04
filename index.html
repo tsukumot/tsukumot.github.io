@@ -14,7 +14,9 @@
         }
         .note-name { font-size: 1.1rem; font-weight: bold; }
         .interval-label { font-size: 0.9rem; color: #aaa; margin-top: 4px; }
-        sup { font-size: 0.7em; vertical-align: super; line-height: 0; }
+        
+        /* コード名の数字と記号を上付きにするためのスタイル */
+        .chord-name sup { font-size: 0.65em; vertical-align: super; line-height: 0; margin-left: 1px; }
         
         button.selected { background: #007bff; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
@@ -59,11 +61,23 @@
         let activeAnalysisRoot = null; 
         let useSharps = false;
 
-        const unify = (text) => {
+        // 音名のみの変換（ボタン用）
+        const unifySimple = (text) => {
             if (!text) return "";
             const dict = useSharps ? f2s : s2f;
-            let unified = text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
-            return unified.replace(/#/g, '<sup>#</sup>').replace(/b/g, '<sup>b</sup>');
+            return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
+        };
+
+        // コード名用：数字や付随する記号を上付きにする
+        const unifyChordName = (text) => {
+            let name = unifySimple(text);
+            // 分離して処理（分数コードのベース音は上付きにしない）
+            const parts = name.split('/');
+            // 数字、M(Major), m(minor), dim, aug, sus, add, およびそれに続くb/#を上付きにする
+            parts[0] = parts[0].replace(/([0-9]|M|m|dim|aug|sus|add|#|b)+/g, (match, offset) => {
+                return offset === 0 ? match : `<sup>${match}</sup>`;
+            });
+            return parts.join('/');
         };
 
         const clearAll = () => {
@@ -108,7 +122,7 @@
                 const isActive = root === activeAnalysisRoot;
                 return `
                     <div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${root}')">
-                        <div class="chord-name">${unify(c)}</div>
+                        <div class="chord-name">${unifyChordName(c)}</div>
                     </div>`;
             }).join('');
 
@@ -134,11 +148,11 @@
                 let intervalLabel = "";
                 if (activeAnalysisRoot) {
                     let d = (rawNotes.indexOf(n) - rawNotes.indexOf(activeAnalysisRoot) + 12) % 12;
-                    intervalLabel = unify(intervalNames[d]); // 度数の b も上付きにする
+                    intervalLabel = intervalNames[d]; // ここは上付きにしない
                 }
 
                 btn.innerHTML = `
-                    <span class="note-name">${unify(n)}</span>
+                    <span class="note-name">${unifySimple(n)}</span>
                     <span class="interval-label">${intervalLabel}</span>
                 `;
 
