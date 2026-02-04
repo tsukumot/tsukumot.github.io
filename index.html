@@ -1,10 +1,36 @@
-<script type="module">
-  import { Chord } from "https://cdn.skypack.dev/@tonaljs/tonal";
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chord Analyzer</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f0f0f0; }
+        #result { background: white; padding: 15px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .chord-name { font-size: 1.5rem; font-weight: bold; color: #007bff; }
+    </style>
+</head>
+<body>
+    <h3>解析結果</h3>
+    <div id="result">解析中...</div>
 
-  // C, F, Gb, Bb を解析
-  const res = Chord.getChord("7sus4b5", "C"); 
-  // または音名配列から直接
-  const detected = Chord.detect(["C", "F", "Gb", "Bb"]);
-  console.log(detected);
-</script>
+    <script type="module">
+        import { Chord } from "https://cdn.skypack.dev/@tonaljs/tonal";
 
+        // 解析したい音名
+        const notes = ["C", "F", "Gb", "Bb"];
+        
+        // コード判定
+        const detected = Chord.detect(notes);
+        
+        const resultDiv = document.getElementById('result');
+        
+        if (detected.length > 0) {
+            // 見つかったコードをすべて画面に表示
+            resultDiv.innerHTML = detected.map(name => `<div class="chord-name">${name}</div>`).join('');
+        } else {
+            resultDiv.innerHTML = "該当するコードが見つかりません";
+        }
+    </script>
+</body>
+</html>
