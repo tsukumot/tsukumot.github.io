@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Chord Lab - Final</title>
+    <title>Chord Lab</title>
     <style>
         body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
-        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; outline: none; }
+        button { padding: 15px 5px; border: none; border-radius: 5px; background: #333; color: white; font-size: 1.1rem; min-height: 60px; -webkit-appearance: none; }
         button.selected { background: #007bff; font-weight: bold; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
         #display { background: #000; padding: 20px; border-radius: 10px; text-align: center; min-height: 100px; margin-bottom: 20px; border: 1px solid #444; }
@@ -22,50 +22,23 @@
     </div>
     <div class="grid" id="pad"></div>
 
-    <script type="module">
-        import { Chord, Interval } from "https://ga.jspm.io/npm:@tonaljs/tonal@4.10.0/dist/index.mjs";
-
+    <script>
+        // ライブラリなしでも動く基本ロジック
         const rawNotes = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
+        const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
+        
         let selected = [];
         let bassIndex = 0;
         let useSharps = false;
-
-        const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
-        const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
+        let TonalChord = null;
+        let TonalInterval = null;
 
         const forceUnify = (text, toSharp) => {
             if (!text) return "";
             return toSharp 
                 ? text.replace(/Db|Eb|Gb|Ab|Bb/g, m => f2s[m] || m)
                 : text.replace(/C#|D#|F#|G#|A#/g, m => s2f[m] || m);
-        };
-
-        const update = () => {
-            const out = document.getElementById('chord-out');
-            const ivOut = document.getElementById('interval-out');
-            
-            if (selected.length === 0) {
-                out.innerText = "SELECT NOTES";
-                ivOut.innerText = "";
-                render();
-                return;
-            }
-
-            const bass = selected[bassIndex % selected.length];
-            const upper = selected.filter(n => n !== bass);
-            
-            const detected = Chord.detect(upper);
-            const upperName = (detected && detected.length > 0) ? detected[0] : upper.join(',');
-
-            const rawResult = upper.length === 0 ? bass : `${upperName} / ${bass}`;
-            out.innerText = forceUnify(rawResult, useSharps);
-            
-            ivOut.innerText = upper.map(n => {
-                const dist = Interval.distance(bass, n);
-                return forceUnify(`${n}:${dist}`, useSharps);
-            }).join(' | ');
-
-            render();
         };
 
         const render = () => {
@@ -75,32 +48,71 @@
                 const btn = document.createElement('button');
                 const isSelected = selected.includes(n);
                 const isBass = isSelected && selected[bassIndex % selected.length] === n;
-                
-                btn.className = `${isSelected ? 'selected' : ''} ${isBass ? 'bass' : ''}`;
+                btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '');
                 btn.innerText = forceUnify(n, useSharps);
-                
-                btn.onclick = () => {
-                    if (selected.includes(n)) {
-                        selected = selected.filter(x => x !== n);
-                    } else {
-                        selected.push(n);
-                        if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
-                        if (s2f[n]) useSharps = false;
-                    }
-                    update();
-                };
+                btn.onclick = () => toggle(n);
                 pad.appendChild(btn);
             });
         };
 
+        const toggle = (n) => {
+            if (selected.includes(n)) {
+                selected = selected.filter(x => x !== n);
+            } else {
+                selected.push(n);
+                if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
+                if (s2f[n]) useSharps = false;
+            }
+            update();
+        };
+
+        const update = () => {
+            const out = document.getElementById('chord-out');
+            const ivOut = document.getElementById('interval-out');
+            if (selected.length === 0) {
+                out.innerText = "SELECT NOTES";
+                ivOut.innerText = "";
+                render();
+                return;
+            }
+
+            const bass = selected[bassIndex % selected.length];
+            const upper = selected.filter(n => n !== bass);
+
+            let upperName = upper.join(',');
+            // ライブラリが読み込まれていれば高度な解析を行う
+            if (TonalChord) {
+                const detected = TonalChord.detect(upper);
+                if (detected.length > 0) upperName = detected[0];
+            }
+
+            const rawResult = upper.length === 0 ? bass : `${upperName} / ${bass}`;
+            out.innerText = forceUnify(rawResult, useSharps);
+            
+            if (TonalInterval) {
+                ivOut.innerText = upper.map(n => forceUnify(`${n}:${TonalInterval.distance(bass, n)}`, useSharps)).join(' | ');
+            }
+            render();
+        };
+
         document.getElementById('display').onclick = () => {
             if (selected.length > 0) {
-                bassIndex = (bassIndex + 1) % selected.length;
+                bassIndex++;
                 update();
             }
         };
 
+        // 1. まずボタンを出す（即座に操作可能）
         render();
+
+        // 2. 後からライブラリを読み込む
+        import("https://ga.jspm.io/npm:@tonaljs/tonal@4.10.0/dist/index.mjs").then(mod => {
+            TonalChord = mod.Chord;
+            TonalInterval = mod.Interval;
+            update(); // 読み込み完了後に再計算
+        }).catch(err => {
+            console.error("Library load failed", err);
+        });
     </script>
 </body>
 </html>
