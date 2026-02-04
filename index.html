@@ -5,12 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Chord Lab - Musical Analysis</title>
     <style>
-        body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+        body { font-family: sans-serif; padding: 20px; background: #1a1a1a; color: white; touch-action: none; -webkit-user-select: none; user-select: none; }
         .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
         button { 
             display: flex; flex-direction: column; align-items: center; justify-content: center;
             padding: 10px 5px; border: none; border-radius: 5px; background: #333; color: white; 
-            min-height: 75px; outline: none; transition: 0.1s;
+            min-height: 75px; outline: none; transition: 0.1s; touch-action: none;
         }
         .note-name { font-size: 1.1rem; font-weight: bold; pointer-events: none; }
         .interval-label { font-size: 0.9rem; color: #aaa; margin-top: 4px; pointer-events: none; }
@@ -59,6 +59,7 @@
         let activeAnalysisRoot = null; 
         let useSharps = false;
         let pressTimer = null;
+        let isLongPress = false;
 
         const unifySimple = (text) => {
             if (!text) return "";
@@ -154,47 +155,49 @@
                     <span class="interval-label">${intervalLabel}</span>
                 `;
 
-                const handleStart = (e) => {
-                    if (pressTimer !== null) return;
+                // Pointer Events で統一
+                btn.onpointerdown = (e) => {
+                    isLongPress = false;
                     pressTimer = setTimeout(() => {
-                        // 長押し成功時
+                        isLongPress = true;
                         if (!selected.includes(n)) selected.push(n);
-                        bassNote = n; // ここで明示的にベース音を更新
+                        bassNote = n;
                         if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
                         if (s2f[n]) useSharps = false;
-                        appUpdate(); 
-                        pressTimer = null;
+                        appUpdate();
                     }, 500);
                 };
 
-                const handleEnd = (e) => {
-                    if (pressTimer !== null) {
+                btn.onpointerup = (e) => {
+                    if (pressTimer) {
                         clearTimeout(pressTimer);
                         pressTimer = null;
-                        // 通常タップ（短押し）
-                        if (selected.includes(n)) {
-                            selected = selected.filter(x => x !== n);
-                            if (n === bassNote) bassNote = null; 
-                        } else {
-                            selected.push(n);
-                            if (selected.length === 1) bassNote = n;
-                            if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
-                            if (s2f[n]) useSharps = false;
+                        if (!isLongPress) {
+                            if (selected.includes(n)) {
+                                selected = selected.filter(x => x !== n);
+                                if (n === bassNote) bassNote = null; 
+                            } else {
+                                selected.push(n);
+                                if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
+                                if (s2f[n]) useSharps = false;
+                            }
+                            appUpdate();
                         }
-                        appUpdate();
                     }
                 };
 
-                btn.onmousedown = handleStart;
-                btn.onmouseup = handleEnd;
-                btn.ontouchstart = handleStart;
-                btn.ontouchend = handleEnd;
+                btn.onpointercancel = btn.onpointerleave = (e) => {
+                    if (pressTimer) {
+                        clearTimeout(pressTimer);
+                        pressTimer = null;
+                    }
+                };
 
                 pad.appendChild(btn);
             });
         };
 
-            appUpdate();
+        appUpdate();
     </script>
 </body>
 </html>
