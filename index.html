@@ -78,14 +78,16 @@
         };
 
         const unifyChordName = (text) => {
-            let name = unifySimple(text);
+            const chord = Tonal.Chord.get(text);
+            if (chord.empty) return unifySimple(text);
+
+            const root = unifySimple(chord.tonic);
+            const remains = chord.symbol;
+
+            // 基本属性の切り出し。ルートは既知なので remains の先頭から。
+            const typeRegex = /^((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]*|add[0-9]+|[0-9]+)*)(.*)/;
             
-            // 確定した正規表現
-            const regex = /^([A-G])([#b])?((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]+|add[0-9]+|[0-9]+)*)(.*)/;
-            
-            return name.replace(regex, (match, root, rootAcc, type, tension) => {
-                const r = root || "";
-                const ra = rootAcc ? `<sup>${rootAcc}</sup>` : "";
+            return remains.replace(typeRegex, (match, type, tension) => {
                 const t = type || "";
                 let tens = tension || "";
 
@@ -95,24 +97,33 @@
                     
                     let formattedUpper = "";
                     if (upper) {
-                        const tokens = upper.match(/sus[0-9]+|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [upper];
+                        const tokens = upper.match(/sus[0-9]*|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [upper];
                         formattedUpper = tokens.join('');
                     }
 
                     let formattedBass = "";
                     if (bass) {
-                        const bassMatch = bass.match(/^([A-G])([#b])?/);
-                        if (bassMatch) {
-                            formattedBass = "/" + bassMatch[1] + (bassMatch[2] ? `<sup>${bassMatch[2]}</sup>` : "");
+                        // 分母もルートと同様に調号を上付きにする
+                        const bRoot = unifySimple(Tonal.Note.get(bass).name || bass);
+                        const bMatch = bRoot.match(/^([A-G])([#b])?/);
+                        if (bMatch) {
+                            formattedBass = "/" + bMatch[1] + (bMatch[2] ? `<sup>${bMatch[2]}</sup>` : "");
                         } else {
-                            formattedBass = "/" + bass;
+                            formattedBass = "/" + bRoot;
                         }
                     }
                     
                     const ts = formattedUpper ? `<sup>${formattedUpper}</sup>` : "";
+                    const rootMatch = root.match(/^([A-G])([#b])?/);
+                    const r = rootMatch[1];
+                    const ra = rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : "";
+
                     return `${r}${ra}${t}${ts}${formattedBass}`;
                 }
 
+                const rootMatch = root.match(/^([A-G])([#b])?/);
+                const r = rootMatch[1];
+                const ra = rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : "";
                 return `${r}${ra}${t}`;
             });
         };
