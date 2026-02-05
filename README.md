@@ -2,6 +2,7 @@
 https://github.com/tsukumot/tsukumot.github.io/blob/main/README_JP.md
 
 https://tsukumot.github.io/
+
 This tool allows you to input notes to find chords.
 Press and hold a button to also search for fractional chords using that note as the bass note.
 It does not support tension chords (9th or higher).
