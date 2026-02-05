@@ -96,24 +96,27 @@
                 return normalized;
             });
 
-            // 1. ルート音 (A-G + #/b) を抽出
-            // 2. 基本属性 (m, maj, 7, 6, 5) を抽出
-            // 3. それ以降 (テンション等) を抽出
-            return name.replace(/^([A-G][#b]?)(maj|min|m|M|7|6|5)?(.*)/, (match, root, type, tension) => {
-                const typeStr = type || "";
-                let tensionStr = tension || "";
+            // 1. ルート音名 [A-G]
+            // 2. ルートの変記号 [#b] -> 上付き
+            // 3. 基本属性 [maj7, m7, 7, 6, 5等]
+            // 4. 残りのテンション -> 上付き
+            const regex = /^([A-G])([#b])?(maj7|m7|M7|maj|min|m|M|7|6|5)?(.*)/;
+            
+            return name.replace(regex, (match, root, rootAcc, type, tension) => {
+                const r = root || "";
+                const ra = rootAcc ? `<sup>${rootAcc}</sup>` : "";
+                const t = type || "";
+                let tens = tension || "";
 
-                if (!tensionStr) return root + typeStr;
-
-                // 分数コードの処理
-                if (tensionStr.includes('/')) {
-                    const parts = tensionStr.split('/');
-                    return `${root}${typeStr}<sup>${parts[0]}</sup>/${parts[1]}`;
+                if (tens.includes('/')) {
+                    const parts = tens.split('/');
+                    const supPart = parts[0] ? `<sup>${parts[0]}</sup>` : "";
+                    return `${r}${ra}${t}${supPart}/${parts[1]}`;
                 }
-                return `${root}${typeStr}<sup>${tensionStr}</sup>`;
+                const ts = tens ? `<sup>${tens}</sup>` : "";
+                return `${r}${ra}${t}${ts}`;
             });
         };
-
 
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
