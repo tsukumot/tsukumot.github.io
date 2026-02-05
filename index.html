@@ -77,35 +77,12 @@
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
-         const unifyChordName = (text) => {
+        const unifyChordName = (text) => {
             let name = unifySimple(text);
             
-            // 1. #5 を一時的に「属性」として保護するため、数値ソートから除外する
-            // テンション部分の正規化とソート
-            name = name.replace(/([0-9#b]+|\(.*\)|sus[0-9]+|add[0-9]+)/g, (match) => {
-                let normalized = match.replace(/#4/g, "#11").replace(/add4/g, "add11");
-                
-                // #5 を含んでいる場合は、一旦切り離して後で結合する
-                let hasSharp5 = normalized.includes("#5");
-                let workStr = normalized.replace("#5", "");
-
-                const tokens = workStr.match(/sus[0-9]+|add[0-9]+|[#b]?[0-9]+/g) || [];
-                if (tokens.length > 1 || (tokens.length > 0 && hasSharp5)) {
-                    tokens.sort((a, b) => {
-                        const valA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
-                        const valB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
-                        return valA - valB;
-                    });
-                    // #5 があった場合は、基本属性に近い位置（先頭）に配置
-                    return (hasSharp5 ? "#5" : "") + tokens.join('');
-                }
-                return normalized;
-            });
-
-            // 表示の成形
-            // rootAcc(#/b) と tension を上付きにする
-            // type に #5 を追加
-            const regex = /^([A-G])([#b])?(maj7|m7|M7|maj|min|m|M|7|6|5|#5)?(.*)/;
+            // 1. ルートと基本属性、テンションを分離
+            // typeに 7#5, maj7, m7#5 などを優先的に含める
+            const regex = /^([A-G])([#b])?(maj7|m7#5|m7|M7|7#5|maj|min|m|M|7|6|5|#5)?(.*)/;
             
             return name.replace(regex, (match, root, rootAcc, type, tension) => {
                 const r = root || "";
@@ -113,6 +90,24 @@
                 const t = type || "";
                 let tens = tension || "";
 
+                // 2. テンション部分のみをソート・置換
+                if (tens) {
+                    // 置換処理
+                    tens = tens.replace(/#4/g, "#11").replace(/add4/g, "add11");
+                    
+                    // 数値ソート
+                    const tokens = tens.match(/sus[0-9]+|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [];
+                    if (tokens.length > 1) {
+                        tokens.sort((a, b) => {
+                            const valA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
+                            const valB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+                            return valA - valB;
+                        });
+                        tens = tokens.join('');
+                    }
+                }
+
+                // 3. 組み立て（分数コード対応）
                 if (tens.includes('/')) {
                     const parts = tens.split('/');
                     const supPart = parts[0] ? `<sup>${parts[0]}</sup>` : "";
