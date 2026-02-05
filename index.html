@@ -82,55 +82,56 @@
             if (chord.empty) return unifySimple(text);
 
             let rootName = chord.tonic;
-            // 元の入力文字列からルートを除いた部分を取得
-            let remains = text.split('/')[0].substring(rootName.length);
+            // オンコードを除いた「本体」部分を特定
+            let mainPart = text.split('/')[0];
+            // 本体からルート名を除いた部分が「属性(remains)」
+            let remains = mainPart.substring(rootName.length);
 
-            // 【補正のトリガー】
-            // 1. 選択した音にルートが含まれていない
-            // 2. または、remainsが空かつルートが異常に長い（誤認の兆候）
+            // ルート誤認補正 (例: A,Bb,D,E,G選択時のAb9sus対策)
             const selectedChromas = selected.map(n => Tonal.Note.get(n).chroma);
             const rootChroma = Tonal.Note.get(rootName).chroma;
 
             if (!selectedChromas.includes(rootChroma) && rootName.length > 1) {
-                // ここで初めて「安全な別名」に切り替える
-                // 例: Ab9sus (誤認) -> Asus4b9 (安全なエイリアス)
                 remains = chord.aliases[0] || remains;
-                
-                // ルートも一文字（A）に強制補正
                 const accidental = rootName.slice(1);
                 rootName = rootName[0];
-                // 押し出された #b を属性の先頭に付ける
-                if (!remains.startsWith(accidental)) {
-                    remains = accidental + remains;
-                }
+                if (!remains.startsWith(accidental)) remains = accidental + remains;
             }
 
             const root = unifySimple(rootName);
             const rootMatch = root.match(/^([A-G])([#b])?/);
             const rStr = `${rootMatch[1]}${rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : ""}`;
 
-            // オンコード分離
+            // オンコード部分の整形
             let formattedBass = "";
             if (text.includes('/')) {
                 const bassPart = text.split('/')[1];
-                const bRoot = unifySimple(Tonal.Note.get(bassPart).name || bassPart);
+                const bNote = Tonal.Note.get(bassPart);
+                const bRoot = unifySimple(bNote.name || bassPart);
                 const bMatch = bRoot.match(/^([A-G])([#b])?/);
                 formattedBass = bMatch ? `/${bMatch[1]}${bMatch[2] ? `<sup>${bMatch[2]}</sup>` : ""}` : `/${bRoot}`;
             }
 
-            // トークン分割（ベースライン vs テンション）
-            // dim, maj, min, sus, add, aug, mM7, M, m, 数字などをベースラインとして保護
+            // トークン分割: [#b][0-9]+ を \d+ より先に書くのが重要
             const tokens = remains.match(/sus[0-9]*|add[0-9]*|maj[0-9]*|min[0-9]*|dim7*|aug|mM7|m[0-9]*|M[0-9]*|[#b][0-9]+|\d+|\(.*\)/g) || [];
-            let t = "", ts = "";
+            
+            let t = "";
+            let ts = "";
 
             tokens.forEach(token => {
                 // 記号から始まる数字、またはカッコは上付き(ts)へ
-                if (token.startsWith('#') || token.startsWith('b') || token.startsWith('(')) ts += token;
-                else t += token;
+                if (token.startsWith('#') || token.startsWith('b') || token.startsWith('(')) {
+                    ts += token;
+                } else {
+                    t += token;
+                }
             });
 
+            // テンションの表記置換
             ts = ts.replace(/#4/g, "#11").replace(/add4/g, "add11").replace(/add6/g, "add13");
-            return `${rStr}${t}${ts ? `<sup>${ts}</sup>` : ""}${formattedBass}`;
+            const tsFinal = ts ? `<sup>${ts}</sup>` : "";
+
+            return `${rStr}${t}${tsFinal}${formattedBass}`;
         };
 
 
