@@ -77,6 +77,7 @@
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
+
         const unifyChordName = (text) => {
             let name = unifySimple(text);
             
@@ -95,19 +96,24 @@
                 return normalized;
             });
 
-            // 表示の成形：ルート部分とサフィックスを慎重に分離
-            // p1: ルート音(Bb等) + 基本属性(m, maj, 7, 6, 5等)
-            // p2: それ以降のテンション
-            return name.replace(/^([A-G][#b]?(?:maj|min|m|M|7|6|5)?)(.*)/, (match, p1, p2) => {
-                if (!p2) return p1;
-                // 分数コードの「/」以降は上付きにしないための処理
-                if (p2.includes('/')) {
-                    const parts = p2.split('/');
-                    return `${p1}<sup>${parts[0]}</sup>/${parts[1]}`;
+            // 1. ルート音 (A-G + #/b) を抽出
+            // 2. 基本属性 (m, maj, 7, 6, 5) を抽出
+            // 3. それ以降 (テンション等) を抽出
+            return name.replace(/^([A-G][#b]?)(maj|min|m|M|7|6|5)?(.*)/, (match, root, type, tension) => {
+                const typeStr = type || "";
+                let tensionStr = tension || "";
+
+                if (!tensionStr) return root + typeStr;
+
+                // 分数コードの処理
+                if (tensionStr.includes('/')) {
+                    const parts = tensionStr.split('/');
+                    return `${root}${typeStr}<sup>${parts[0]}</sup>/${parts[1]}`;
                 }
-                return `${p1}<sup>${p2}</sup>`;
+                return `${root}${typeStr}<sup>${tensionStr}</sup>`;
             });
         };
+
 
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
