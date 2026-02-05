@@ -129,38 +129,45 @@
             const out = document.getElementById('chord-out');
             if (selected.length === 0) {
                 out.innerText = "SELECT NOTES";
-                activeAnalysisRoot = null; render(); return;
+                activeAnalysisRoot = null; 
+                bassNote = null; // 全解除時はベースもリセット
+                render(); return;
             }
 
-            if (!bassNote || !selected.includes(bassNote)) bassNote = selected[0] || null;
+            // 【修正】自動で bassNote を selected[0] に割り当てない
+            // ただし、選択解除によって bassNote だった音が消えた場合は null に戻す
+            if (bassNote && !selected.includes(bassNote)) {
+                bassNote = null;
+            }
 
+            // 解析ロジック
             let rawCandidates = Tonal.Chord.detect(selected);
-            const upper = selected.filter(n => n !== bassNote);
-            if (upper.length >= 2) Tonal.Chord.detect(upper).forEach(u => rawCandidates.push(u));
-
+            
+            // ベース音が指定されている場合のみ、分数コードとして処理
             let finalCandidates = [...new Set(rawCandidates)].map(c => {
                 const main = c.split('/')[0];
+                if (!bassNote) return main; // ベース未指定ならそのまま
+
                 const root = Tonal.Chord.get(main).tonic;
                 if (root && getChroma(root) === getChroma(bassNote)) return main;
                 return `${main}/${bassNote}`;
             });
 
-            if (finalCandidates.length > 1) finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
+            if (finalCandidates.length > 1) {
+                finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
+            }
 
-            // activeAnalysisRootの妥当性チェック（クロマで判定）
             if (activeAnalysisRoot && !selected.some(n => getChroma(n) === getChroma(activeAnalysisRoot))) {
                 activeAnalysisRoot = null;
             }
 
             if (finalCandidates.length > 0 && !activeAnalysisRoot) {
                 const firstCandidateRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
-                // rawNotesに含まれる名前に正規化
                 activeAnalysisRoot = rawNotes.find(n => getChroma(n) === getChroma(firstCandidateRoot)) || firstCandidateRoot;
             }
 
             out.innerHTML = finalCandidates.map(c => {
                 const chordTonic = Tonal.Chord.get(c.split('/')[0]).tonic;
-                // 表示・選択用に、現在のrawNotes（C, Db等）の中から最も適切な音名を探す
                 const rootForInternalUse = rawNotes.find(n => getChroma(n) === getChroma(chordTonic)) || chordTonic;
                 const isActive = getChroma(rootForInternalUse) === getChroma(activeAnalysisRoot);
                 return `
