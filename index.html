@@ -79,10 +79,21 @@
 
         const unifyChordName = (text) => {
             let name = unifySimple(text);
-            name = name.replace(/sus4/g, "SUS_FOUR_TEMP");
+            
+            // sus4を一時保護
+            name = name.replace(/sus4/g, "TEMP_SUS4");
+
+            // #4, b6, 4, 6 を 11, 13 系に置換
+            // #4 -> #11, b6 -> b13
+            name = name.replace(/#4/g, "#11").replace(/b6/g, "b13");
+            // 単独の 4 -> 11, 6 -> 13
             name = name.replace(/(?<=[A-G][#b]?)4/g, "11").replace(/(?<=[A-G][#b]?)6/g, "13");
+            // 括弧内の残りの 6 を 13 に（例: (b13,6) のようなケース対策）
             name = name.replace(/6(?=\))/g, "13");
-            name = name.replace(/SUS_FOUR_TEMP/g, "sus4");
+
+            // sus4を復元
+            name = name.replace(/TEMP_SUS4/g, "sus4");
+
             return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
         };
 
