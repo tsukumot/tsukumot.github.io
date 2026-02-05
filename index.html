@@ -77,7 +77,15 @@
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
-        const unifyChordName = (text) => unifySimple(text).replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
+        const unifyChordName = (text) => {
+            let name = unifySimple(text);
+            // 4を11、6を13に置換（音名としてのb6や#4と誤認しないよう、数値のみの箇所を狙う）
+            name = name.replace(/(?<=[A-G][#b]?)4/g, "11").replace(/(?<=[A-G][#b]?)6/g, "13");
+            // 特殊なサフィックス内の4/6も置換
+            name = name.replace(/sus4/g, "sus11").replace(/6(?=\))/g, "13");
+            
+            return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
+        };
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
 
@@ -129,33 +137,24 @@
             const out = document.getElementById('chord-out');
             if (selected.length === 0) {
                 out.innerText = "SELECT NOTES";
-                activeAnalysisRoot = null; 
-                bassNote = null; // 全解除時はベースもリセット
-                render(); return;
+                activeAnalysisRoot = null; bassNote = null; render(); return;
             }
 
-            // 【修正】自動で bassNote を selected[0] に割り当てない
-            // ただし、選択解除によって bassNote だった音が消えた場合は null に戻す
-            if (bassNote && !selected.includes(bassNote)) {
-                bassNote = null;
-            }
+            if (bassNote && !selected.includes(bassNote)) bassNote = null;
 
-            // 解析ロジック
             let rawCandidates = Tonal.Chord.detect(selected);
-            
-            // ベース音が指定されている場合のみ、分数コードとして処理
+            const upper = selected.filter(n => n !== bassNote);
+            if (upper.length >= 2) Tonal.Chord.detect(upper).forEach(u => rawCandidates.push(u));
+
             let finalCandidates = [...new Set(rawCandidates)].map(c => {
                 const main = c.split('/')[0];
-                if (!bassNote) return main; // ベース未指定ならそのまま
-
+                if (!bassNote) return main;
                 const root = Tonal.Chord.get(main).tonic;
                 if (root && getChroma(root) === getChroma(bassNote)) return main;
                 return `${main}/${bassNote}`;
             });
 
-            if (finalCandidates.length > 1) {
-                finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
-            }
+            if (finalCandidates.length > 1) finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
 
             if (activeAnalysisRoot && !selected.some(n => getChroma(n) === getChroma(activeAnalysisRoot))) {
                 activeAnalysisRoot = null;
@@ -192,7 +191,6 @@
                 const isSelected = selected.includes(n);
                 const isBass = isSelected && bassNote === n;
                 const isRoot = activeAnalysisRoot && getChroma(n) === getChroma(activeAnalysisRoot);
-
                 btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '') + (isRoot ? ' is-root' : '');
                 
                 let intervalLabel = "";
@@ -200,9 +198,7 @@
                     let d = (getChroma(n) - getChroma(activeAnalysisRoot) + 12) % 12;
                     intervalLabel = intervalNames[d];
                 }
-
                 btn.innerHTML = `<span class="note-name">${unifySimple(n)}</span><span class="interval-label">${intervalLabel}</span>`;
-
                 btn.onpointerdown = (e) => {
                     isLongPress = false;
                     pressTimer = setTimeout(() => {
@@ -214,7 +210,6 @@
                         appUpdate();
                     }, 500);
                 };
-
                 btn.onpointerup = (e) => {
                     if (pressTimer) {
                         clearTimeout(pressTimer);
@@ -233,7 +228,6 @@
                         }
                     }
                 };
-
                 btn.onpointercancel = btn.onpointerleave = (e) => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
                 pad.appendChild(btn);
             });
