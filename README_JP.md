@@ -11,4 +11,5 @@ https://tsukumot.github.io/
 ・ベース音がコードに含まれていない場合、足した状態で再生されます。
 
 また、クエリで左上ボタンに割り当てる音を変更できます。
+
 https://tsukumot.github.io/?start=Bb
