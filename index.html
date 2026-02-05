@@ -80,9 +80,9 @@
         const unifyChordName = (text) => {
             let name = unifySimple(text);
             
-            // 1. ルートと基本属性、テンションを分離
-            // typeに 7#5, maj7, m7#5 などを優先的に含める
-            const regex = /^([A-G])([#b])?(maj7|m7#5|m7|M7|7#5|maj|min|m|M|7|6|5|#5)?(.*)/;
+            // テンション置換 (4->11, 6->13)
+            // ただし、ルート直後の属性としての 6 などは置換されないよう、先に分離してから行う
+            const regex = /^([A-G])([#b])?((?:(?:M|m|maj)?(?:5|6|7|9|11|13)(?:[#b]5)?)?)(.*)/;
             
             return name.replace(regex, (match, root, rootAcc, type, tension) => {
                 const r = root || "";
@@ -90,12 +90,10 @@
                 const t = type || "";
                 let tens = tension || "";
 
-                // 2. テンション部分のみをソート・置換
                 if (tens) {
-                    // 置換処理
-                    tens = tens.replace(/#4/g, "#11").replace(/add4/g, "add11");
+                    // テンション部分のみ 4->11, 6->13 を適用
+                    tens = tens.replace(/#4/g, "#11").replace(/add4/g, "add11").replace(/add6/g, "add13");
                     
-                    // 数値ソート
                     const tokens = tens.match(/sus[0-9]+|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [];
                     if (tokens.length > 1) {
                         tokens.sort((a, b) => {
@@ -107,17 +105,22 @@
                     }
                 }
 
-                // 3. 組み立て（分数コード対応）
+                // 分母の処理
                 if (tens.includes('/')) {
                     const parts = tens.split('/');
-                    const supPart = parts[0] ? `<sup>${parts[0]}</sup>` : "";
-                    return `${r}${ra}${t}${supPart}/${parts[1]}`;
+                    const upperTension = parts[0] ? `<sup>${parts[0]}</sup>` : "";
+                    const bassMatch = parts[1].match(/^([A-G])([#b])?/);
+                    let formattedBass = parts[1];
+                    if (bassMatch) {
+                        formattedBass = bassMatch[1] + (bassMatch[2] ? `<sup>${bassMatch[2]}</sup>` : "");
+                    }
+                    return `${r}${ra}${t}${upperTension}/${formattedBass}`;
                 }
+
                 const ts = tens ? `<sup>${tens}</sup>` : "";
                 return `${r}${ra}${t}${ts}`;
             });
         };
-
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
 
@@ -125,29 +128,22 @@
             if (!audioCtx) return;
             activeOscillators.forEach(osc => { try { osc.stop(); } catch (e) {} });
             activeOscillators = [];
-
             const rootFreq = Tonal.Note.freq(rootName + "3");
             const rootChroma = getChroma(rootName);
             const duration = 5.0;
-
             selected.forEach(noteName => {
                 const noteChroma = getChroma(noteName);
                 const semitones = (noteChroma - rootChroma + 12) % 12;
-
                 let targetFreq;
                 let volume = 0.08;
-
                 if (semitones === 4) targetFreq = rootFreq * 1.25;
                 else if (semitones === 3) targetFreq = rootFreq * 1.2;
                 else targetFreq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", Tonal.Interval.fromSemitones(semitones)));
-
                 if (semitones === 0 || semitones === 7) volume = 0.15;
-
                 if (noteName === bassNote) {
                     if (semitones > 0) targetFreq *= 0.5;
                     volume = 0.15; 
                 }
-
                 const osc = audioCtx.createOscillator();
                 const gain = audioCtx.createGain();
                 osc.type = 'triangle';
@@ -171,13 +167,10 @@
                 out.innerText = "SELECT NOTES";
                 activeAnalysisRoot = null; bassNote = null; render(); return;
             }
-
             if (bassNote && !selected.includes(bassNote)) bassNote = null;
-
             let rawCandidates = Tonal.Chord.detect(selected);
             const upper = selected.filter(n => n !== bassNote);
             if (upper.length >= 2) Tonal.Chord.detect(upper).forEach(u => rawCandidates.push(u));
-
             let finalCandidates = [...new Set(rawCandidates)].map(c => {
                 const main = c.split('/')[0];
                 if (!bassNote) return main;
@@ -185,18 +178,12 @@
                 if (root && getChroma(root) === getChroma(bassNote)) return main;
                 return `${main}/${bassNote}`;
             });
-
             if (finalCandidates.length > 1) finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
-
-            if (activeAnalysisRoot && !selected.some(n => getChroma(n) === getChroma(activeAnalysisRoot))) {
-                activeAnalysisRoot = null;
-            }
-
+            if (activeAnalysisRoot && !selected.some(n => getChroma(n) === getChroma(activeAnalysisRoot))) activeAnalysisRoot = null;
             if (finalCandidates.length > 0 && !activeAnalysisRoot) {
                 const firstCandidateRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
                 activeAnalysisRoot = rawNotes.find(n => getChroma(n) === getChroma(firstCandidateRoot)) || firstCandidateRoot;
             }
-
             out.innerHTML = finalCandidates.map(c => {
                 const chordTonic = Tonal.Chord.get(c.split('/')[0]).tonic;
                 const rootForInternalUse = rawNotes.find(n => getChroma(n) === getChroma(chordTonic)) || chordTonic;
@@ -206,14 +193,10 @@
                         <div class="chord-name">${unifyChordName(c)}</div>
                     </div>`;
             }).join('');
-
             render();
         };
 
-        window.setAnalysisRoot = (root) => {
-            activeAnalysisRoot = root;
-            appUpdate();
-        };
+        window.setAnalysisRoot = (root) => { activeAnalysisRoot = root; appUpdate(); };
 
         const render = () => {
             const pad = document.getElementById('pad');
@@ -224,7 +207,6 @@
                 const isBass = isSelected && bassNote === n;
                 const isRoot = activeAnalysisRoot && getChroma(n) === getChroma(activeAnalysisRoot);
                 btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '') + (isRoot ? ' is-root' : '');
-                
                 let intervalLabel = "";
                 if (activeAnalysisRoot) {
                     let d = (getChroma(n) - getChroma(activeAnalysisRoot) + 12) % 12;
@@ -264,7 +246,6 @@
                 pad.appendChild(btn);
             });
         };
-
         appUpdate();
     </script>
 </body>
