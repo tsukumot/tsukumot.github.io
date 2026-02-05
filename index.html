@@ -84,31 +84,34 @@
             let rootName = chord.tonic;
             let remains = chord.aliases[0] || "";
 
-            // --- ルート誤認の強制補正ロジック ---
-            // 選択された音（chroma）のリストを作成
+            // ルート誤認補正（Ab9sus対策）
             const selectedChromas = selected.map(n => Tonal.Note.get(n).chroma);
             const rootChroma = Tonal.Note.get(rootName).chroma;
-
-            // もし解析されたルート音が選択音に含まれておらず、かつルートが「b」や「#」を含んでいる場合
-            // 例: A, Bb, D, E, G を選んでいるのにルートが Ab (chroma 8) と判定された場合
             if (!selectedChromas.includes(rootChroma) && rootName.length > 1) {
-                // 末尾の記号を属性側に押し戻す (Ab -> A, 9sus -> b9sus)
-                const accidental = rootName.slice(1); // "b" や "#"
-                rootName = rootName[0]; // "A"
-                remains = accidental + remains; // "b9sus"
+                const accidental = rootName.slice(1); 
+                rootName = rootName[0];
+                remains = accidental + remains;
             }
-            // ----------------------------------
 
             const root = unifySimple(rootName);
             
-            // #b付き数字をtensionに流すための正規表現
+            // 属性とテンションの切り分け
             const finalRegex = /^((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]*|add[0-9]+|[0-9]+)*)(.*)/;
 
             return remains.replace(finalRegex, (match, type, tension) => {
-                const t = type || "";
+                let t = type || "";
                 let tens = tension || "";
 
-                // オンコード（分母）の取得
+                // --- ここで tension に漏れた sus を type(ベースライン) に引き戻す ---
+                if (tens.includes("sus")) {
+                    const susMatch = tens.match(/sus[0-9]*/);
+                    if (susMatch) {
+                        t += susMatch[0]; // susを基本属性に合流
+                        tens = tens.replace(susMatch[0], ""); // tensionからは消す
+                    }
+                }
+                // -----------------------------------------------------------
+
                 let formattedBass = "";
                 if (text.includes('/')) {
                     const bassPart = text.split('/')[1];
@@ -117,20 +120,20 @@
                     formattedBass = bMatch ? `/${bMatch[1]}${bMatch[2] ? `<sup>${bMatch[2]}</sup>` : ""}` : `/${bRoot}`;
                 }
 
+                const rMatch = root.match(/^([A-G])([#b])?/);
+                const ra = rMatch[2] ? `<sup>${rMatch[2]}</sup>` : "";
+                const rStr = `${rMatch[1]}${ra}`;
+
                 if (tens) {
                     tens = tens.replace(/#4/g, "#11").replace(/add4/g, "add11").replace(/add6/g, "add13");
-                    const tokens = tens.match(/sus[0-9]*|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [tens];
+                    const tokens = tens.match(/add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [tens];
                     const ts = `<sup>${tokens.join('')}</sup>`;
-                    
-                    const rMatch = root.match(/^([A-G])([#b])?/);
-                    return `${rMatch[1]}${rMatch[2] ? `<sup>${rMatch[2]}</sup>` : ""}${t}${ts}${formattedBass}`;
+                    return `${rStr}${t}${ts}${formattedBass}`;
                 }
 
-                const rMatch = root.match(/^([A-G])([#b])?/);
-                return `${rMatch[1]}${rMatch[2] ? `<sup>${rMatch[2]}</sup>` : ""}${t}${formattedBass}`;
+                return `${rStr}${t}${formattedBass}`;
             });
         };
-
 
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
