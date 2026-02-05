@@ -15,12 +15,9 @@
         .note-name { font-size: 1.1rem; font-weight: bold; pointer-events: none; }
         .interval-label { font-size: 0.85rem; color: #aaa; margin-top: 4px; pointer-events: none; font-weight: 500; }
         sup { font-size: 0.75em; vertical-align: super; line-height: 0; }
-        
         button.selected { background: #007bff; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
-        /* 根音（is-root）の色を最優先にするため selected より後に記述、または!important */
         button.is-root { background: #ff4757 !important; color: white; } 
-
         #display { background: #000; padding: 15px; border-radius: 10px; min-height: 180px; margin-bottom: 20px; border: 1px solid #444; position: relative; }
         .chord-list { max-height: 200px; overflow-y: auto; }
         .chord-item { padding: 10px; margin-bottom: 8px; background: #222; border-radius: 5px; cursor: pointer; border: 1px solid transparent; }
@@ -37,29 +34,14 @@
         <div id="chord-out" class="chord-list">SELECT NOTES</div>
     </div>
     <div class="grid" id="pad"></div>
-
     <script src="https://cdn.jsdelivr.net/npm/@tonaljs/tonal/browser/tonal.min.js"></script>
-
     <script>
         const baseChromatic = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
         const s2f = { 'C#':'Db', 'D#':'Eb', 'F#':'Gb', 'G#':'Ab', 'A#':'Bb' };
         const f2s = { 'Db':'C#', 'Eb':'D#', 'Gb':'F#', 'Ab':'G#', 'Bb':'A#' };
         const intervalNames = ["R", "m2", "M2", "m3", "M3", "P4", "-5", "P5", "+5", "M6", "m7", "M7"];
-
-        let selected = [];
-        let bassNote = null;
-        let activeAnalysisRoot = null; 
-        let useSharps = false;
-        let pressTimer = null;
-        let isLongPress = false;
-        let audioCtx = null;
-        let activeOscillators = [];
-
-        const initAudio = () => {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            else if (audioCtx.state === 'suspended') audioCtx.resume();
-        };
-
+        let selected = [], bassNote = null, activeAnalysisRoot = null, useSharps = false, pressTimer = null, isLongPress = false, audioCtx = null, activeOscillators = [];
+        const initAudio = () => { if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)(); else if (audioCtx.state === 'suspended') audioCtx.resume(); };
         const getRawNotes = () => {
             const params = new URLSearchParams(window.location.search);
             let startNote = params.get('start') || 'C';
@@ -67,51 +49,32 @@
             const startIndex = baseChromatic.indexOf(startNote.toUpperCase());
             return startIndex === -1 ? [...baseChromatic] : [...baseChromatic.slice(startIndex), ...baseChromatic.slice(0, startIndex)];
         };
-
         const rawNotes = getRawNotes();
-        const unifySimple = (text) => {
-            if (!text) return "";
-            const dict = useSharps ? f2s : s2f;
-            return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
-        };
-
+        const unifySimple = (text) => { if (!text) return ""; const dict = useSharps ? f2s : s2f; return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m); };
         const unifyChordName = (text) => {
             if (!text) return "";
             let [mainPart, bassPart] = text.split('/');
-            const rootMatch = mainPart.match(/^([A-G][#b]?)/);
-            if (!rootMatch) return unifySimple(text);
-            
-            let rootName = rootMatch[1];
-            let remains = mainPart.substring(rootName.length);
-
-            // ルート誤認補正
-            const selectedChromas = selected.map(n => Tonal.Note.get(n).chroma);
-            const rootChroma = Tonal.Note.get(rootName).chroma;
-            if (!selectedChromas.includes(rootChroma) && rootName.length > 1) {
-                const accidental = rootName.slice(1);
-                rootName = rootName[0];
-                remains = accidental + remains;
+            let chord = Tonal.Chord.get(mainPart);
+            let rootName = chord.tonic || "";
+            let selectedChromas = selected.map(n => Tonal.Note.get(n).chroma);
+            let rootNote = Tonal.Note.get(rootName);
+            if (!rootNote.empty && !selectedChromas.includes(rootNote.chroma)) {
+                rootName = mainPart[0];
+                if (mainPart[1] === '#' || mainPart[1] === 'b') rootName += mainPart[1];
             }
-
+            if (!rootName) { const m = mainPart.match(/^([A-G][#b]?)/); if (m) rootName = m[1]; }
+            let remains = mainPart.substring(rootName.length);
             const rUnified = unifySimple(rootName);
             const rm = rUnified.match(/^([A-G])([#b])?/);
-            const rStr = `${rm[1]}${rm[2] ? `<sup>${rm[2]}</sup>` : ""}`;
-
-            // 69, 11, 13, \d の優先順位で分割
+            const rStr = rm ? `${rm[1]}${rm[2] ? `<sup>${rm[2]}</sup>` : ""}` : unifySimple(rootName);
             const tokens = remains.match(/sus[0-9]*|add[0-9]*|maj[0-9]*|min[0-9]*|dim7*|aug|mM7|69|11|13|m|M|[#b][0-9]+|\(.*\)|[0-9]/g) || [];
             let t = "", ts = "";
             tokens.forEach(token => {
-                if (token.startsWith('#') || token.startsWith('b') || token.startsWith('(')) {
-                    ts += token;
-                } else if (token === "5" && t.length > 0) {
-                    ts += "no5"; // 75対策
-                } else {
-                    t += token;
-                }
+                if (token.startsWith('#') || token.startsWith('b') || token.startsWith('(')) ts += token;
+                else if (token === "5" && t.length > 0) ts += "no5";
+                else t += token;
             });
-
             ts = ts.replace(/#4/g, "#11").replace(/add4/g, "add11").replace(/add6/g, "add13");
-            
             let fb = "";
             if (bassPart) {
                 const bu = unifySimple(bassPart);
@@ -120,9 +83,7 @@
             }
             return `${rStr}${t}${ts ? `<sup>${ts}</sup>` : ""}${fb}`;
         };
-
         const getChroma = (n) => Tonal.Note.get(n).chroma;
-
         const playChord = (rootName) => {
             if (!audioCtx) return;
             activeOscillators.forEach(osc => { try { osc.stop(); } catch (e) {} });
@@ -134,95 +95,52 @@
                 let freq = Tonal.Note.freq(Tonal.Note.transpose(rootName + "3", Tonal.Interval.fromSemitones(semitones)));
                 let vol = (semitones === 0 || semitones === 7) ? 0.15 : 0.08;
                 if (n === bassNote && semitones > 0) freq *= 0.5;
-                const osc = audioCtx.createOscillator();
-                const gain = audioCtx.createGain();
-                osc.type = 'triangle';
-                osc.frequency.value = freq;
-                gain.gain.setValueAtTime(0, audioCtx.currentTime);
-                gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.1);
-                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 4);
+                const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+                osc.type = 'triangle'; osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(vol, audioCtx.currentTime + 0.1); gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 4);
                 osc.connect(gain); gain.connect(audioCtx.destination);
-                osc.start(); osc.stop(audioCtx.currentTime + 4);
-                activeOscillators.push(osc);
+                osc.start(); osc.stop(audioCtx.currentTime + 4); activeOscillators.push(osc);
             });
         };
-
         const clearAll = () => { selected = []; bassNote = null; activeAnalysisRoot = null; appUpdate(); };
-
         const appUpdate = () => {
             const out = document.getElementById('chord-out');
             if (selected.length === 0) { out.innerText = "SELECT NOTES"; activeAnalysisRoot = null; render(); return; }
-            
             let rawCandidates = Tonal.Chord.detect(selected);
             const upper = selected.filter(n => n !== bassNote);
-            if (upper.length >= 2) Tonal.Chord.detect(upper).forEach(u => rawCandidates.push(u));
-
-            let finalCandidates = [...new Set(rawCandidates)].map(c => {
+            if (upper.length >= 2) Tonal.Chord.detect(upper).forEach(u => { if(!rawCandidates.includes(u)) rawCandidates.push(u); });
+            if (rawCandidates.length === 0) { out.innerText = "UNKNOWN CHORD"; activeAnalysisRoot = null; render(); return; }
+            let finalCandidates = rawCandidates.map(c => {
                 const main = c.split('/')[0];
                 if (!bassNote) return main;
                 const root = Tonal.Chord.get(main).tonic;
                 return (root && getChroma(root) === getChroma(bassNote)) ? main : `${main}/${bassNote}`;
             });
-
+            finalCandidates = [...new Set(finalCandidates)];
             if (finalCandidates.length > 1) finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
-
-            // 解析不能な場合（Gbを加えたときなど）の処理
-            if (finalCandidates.length === 0) {
-                out.innerText = "UNKNOWN CHORD";
-                activeAnalysisRoot = null; 
-            } else {
-                if (!activeAnalysisRoot) {
-                    const firstRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
-                    activeAnalysisRoot = rawNotes.find(n => getChroma(n) === getChroma(firstRoot)) || firstRoot;
-                }
-                out.innerHTML = finalCandidates.map(c => {
-                    const ct = Tonal.Chord.get(c.split('/')[0]).tonic;
-                    const r = rawNotes.find(n => getChroma(n) === getChroma(ct)) || ct;
-                    const isActive = getChroma(r) === getChroma(activeAnalysisRoot);
-                    return `<div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${r}'); playChord('${r}')"><div class="chord-name">${unifyChordName(c)}</div></div>`;
-                }).join('');
+            if (!activeAnalysisRoot || !finalCandidates.some(c => getChroma(Tonal.Chord.get(c.split('/')[0]).tonic) === getChroma(activeAnalysisRoot))) {
+                const firstRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
+                activeAnalysisRoot = rawNotes.find(n => getChroma(n) === getChroma(firstRoot)) || firstRoot;
             }
+            out.innerHTML = finalCandidates.map(c => {
+                const ct = Tonal.Chord.get(c.split('/')[0]).tonic;
+                const r = rawNotes.find(n => getChroma(n) === getChroma(ct)) || ct;
+                const isActive = getChroma(r) === getChroma(activeAnalysisRoot);
+                return `<div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${r}'); playChord('${r}')"><div class="chord-name">${unifyChordName(c)}</div></div>`;
+            }).join('');
             render();
         };
-
         window.setAnalysisRoot = (r) => { activeAnalysisRoot = r; appUpdate(); };
-
         const render = () => {
-            const pad = document.getElementById('pad');
-            pad.innerHTML = "";
+            const pad = document.getElementById('pad'); pad.innerHTML = "";
             rawNotes.forEach(n => {
                 const btn = document.createElement('button');
-                const isSelected = selected.includes(n);
-                const isBass = isSelected && bassNote === n;
-                // ここで activeAnalysisRoot と一致するか判定
-                const isRoot = activeAnalysisRoot && getChroma(n) === getChroma(activeAnalysisRoot);
-                
+                const isSelected = selected.includes(n), isBass = isSelected && bassNote === n, isRoot = activeAnalysisRoot && getChroma(n) === getChroma(activeAnalysisRoot);
                 btn.className = (isSelected ? 'selected' : '') + (isBass ? ' bass' : '') + (isRoot ? ' is-root' : '');
                 let il = activeAnalysisRoot ? intervalNames[(getChroma(n) - getChroma(activeAnalysisRoot) + 12) % 12] : "";
                 btn.innerHTML = `<span class="note-name">${unifySimple(n)}</span><span class="interval-label">${il}</span>`;
-                
-                btn.onpointerdown = (e) => {
-                    isLongPress = false;
-                    pressTimer = setTimeout(() => { isLongPress = true; if (!selected.includes(n)) selected.push(n); bassNote = n; appUpdate(); }, 500);
-                };
-                btn.onpointerup = (e) => {
-                    if (pressTimer) {
-                        clearTimeout(pressTimer);
-                        if (!isLongPress) {
-                            if (selected.includes(n)) {
-                                selected = selected.filter(x => x !== n);
-                                if (n === bassNote) bassNote = null;
-                                // 選択解除された音が root だった場合、解析ルートも解除
-                                if (activeAnalysisRoot && getChroma(n) === getChroma(activeAnalysisRoot)) activeAnalysisRoot = null;
-                            } else {
-                                selected.push(n);
-                                if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
-                                if (s2f[n]) useSharps = false;
-                            }
-                            appUpdate();
-                        }
-                    }
-                };
+                btn.onpointerdown = (e) => { isLongPress = false; pressTimer = setTimeout(() => { isLongPress = true; if (!selected.includes(n)) selected.push(n); bassNote = n; appUpdate(); }, 500); };
+                btn.onpointerup = (e) => { if (pressTimer) { clearTimeout(pressTimer); if (!isLongPress) { if (selected.includes(n)) { selected = selected.filter(x => x !== n); if (n === bassNote) bassNote = null; if (activeAnalysisRoot && getChroma(n) === getChroma(activeAnalysisRoot)) activeAnalysisRoot = null; } else { selected.push(n); if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true; if (s2f[n]) useSharps = false; } appUpdate(); } } };
                 pad.appendChild(btn);
             });
         };
