@@ -80,8 +80,8 @@
         const unifyChordName = (text) => {
             let name = unifySimple(text);
             
-            // #5, b5 は除外し、4 を追加した基本属性の抽出
-            const regex = /^([A-G])([#b])?((?:M|m|maj|min|7|6|5|4|9|11|13)*)(.*)/;
+            // 最長一致を優先した正規表現。mMやmajを先に評価
+            const regex = /^([A-G])([#b])?((?:maj|min|mM|M|m|7|6|5|4|9|11|13)*)(.*)/;
             
             return name.replace(regex, (match, root, rootAcc, type, tension) => {
                 const r = root || "";
@@ -90,19 +90,15 @@
                 let tens = tension || "";
 
                 if (tens) {
-                    // 基本置換
                     tens = tens.replace(/#4/g, "#11").replace(/add4/g, "add11").replace(/add6/g, "add13");
-                    
                     let [upper, bass] = tens.split('/');
                     
-                    // テンション部分の整形（ソートは行わず、トークンを抽出して結合）
                     let formattedUpper = "";
                     if (upper) {
                         const tokens = upper.match(/sus[0-9]+|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [upper];
                         formattedUpper = tokens.join('');
                     }
 
-                    // 分数コードの処理
                     let formattedBass = "";
                     if (bass) {
                         const bassMatch = bass.match(/^([A-G])([#b])?/);
@@ -120,7 +116,6 @@
                 return `${r}${ra}${t}`;
             });
         };
-
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
 
