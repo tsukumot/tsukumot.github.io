@@ -79,11 +79,10 @@
 
         const unifyChordName = (text) => {
             let name = unifySimple(text);
-            // 4を11、6を13に置換（音名としてのb6や#4と誤認しないよう、数値のみの箇所を狙う）
+            name = name.replace(/sus4/g, "SUS_FOUR_TEMP");
             name = name.replace(/(?<=[A-G][#b]?)4/g, "11").replace(/(?<=[A-G][#b]?)6/g, "13");
-            // 特殊なサフィックス内の4/6も置換
-            name = name.replace(/sus4/g, "sus11").replace(/6(?=\))/g, "13");
-            
+            name = name.replace(/6(?=\))/g, "13");
+            name = name.replace(/SUS_FOUR_TEMP/g, "sus4");
             return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
         };
 
@@ -218,7 +217,7 @@
                             if (selected.includes(n)) {
                                 selected = selected.filter(x => x !== n);
                                 if (n === bassNote) bassNote = null;
-                                if (getChroma(n) === getChroma(activeAnalysisRoot)) activeAnalysisRoot = null;
+                                if (activeAnalysisRoot && getChroma(n) === getChroma(activeAnalysisRoot)) activeAnalysisRoot = null;
                             } else {
                                 selected.push(n);
                                 if (['C#','D#','F#','G#','A#'].includes(n)) useSharps = true;
