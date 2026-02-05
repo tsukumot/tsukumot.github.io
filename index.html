@@ -81,18 +81,16 @@
             const chord = Tonal.Chord.get(text);
             if (chord.empty) return unifySimple(text);
 
-            // ルートと属性（aliases[0]が最も一般的）を分離
             const root = unifySimple(chord.tonic);
             let remains = chord.aliases[0] || "";
 
-            // typeRegex で属性(ベースライン)とテンション(上付き)を切り分け
-            const typeRegex = /^((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]*|add[0-9]+|[0-9]+)*)(.*)/;
+            // # か b が直前にある数字は基本属性(t)に含めない。これで b9 が一塊で tension(ts) へ流れる
+            const typeRegex = /^((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]*|add[0-9]+|(?<![#b])[0-9]+)*)(.*)/;
             
             return remains.replace(typeRegex, (match, type, tension) => {
                 const t = type || "";
                 let tens = tension || "";
 
-                // 分数コードの処理（元のtextに / がある場合）
                 let formattedBass = "";
                 if (text.includes('/')) {
                     const bassPart = text.split('/')[1];
@@ -107,15 +105,18 @@
 
                 if (tens) {
                     tens = tens.replace(/#4/g, "#11").replace(/add4/g, "add11").replace(/add6/g, "add13");
+                    // テンション部分の抽出。b9 などを一塊でキャッチ
                     const tokens = tens.match(/sus[0-9]*|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [tens];
                     const ts = `<sup>${tokens.join('')}</sup>`;
                     
                     const rootMatch = root.match(/^([A-G])([#b])?/);
-                    return `${rootMatch[1]}${rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : ""}${t}${ts}${formattedBass}`;
+                    const ra = rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : "";
+                    return `${rootMatch[1]}${ra}${t}${ts}${formattedBass}`;
                 }
 
                 const rootMatch = root.match(/^([A-G])([#b])?/);
-                return `${rootMatch[1]}${rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : ""}${t}${formattedBass}`;
+                const ra = rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : "";
+                return `${rootMatch[1]}${ra}${t}${formattedBass}`;
             });
         };
 
