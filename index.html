@@ -14,7 +14,7 @@
         }
         .note-name { font-size: 1.1rem; font-weight: bold; pointer-events: none; }
         .interval-label { font-size: 0.85rem; color: #aaa; margin-top: 4px; pointer-events: none; font-weight: 500; }
-        sup { font-size: 0.7em; vertical-align: super; line-height: 0; }
+        sup { font-size: 0.75em; vertical-align: super; line-height: 0; }
         .chord-name sup { margin-left: 0.5px; }
         button.selected { background: #007bff; }
         button.bass { border: 3px solid #ff4757; box-sizing: border-box; }
@@ -80,21 +80,33 @@
         const unifyChordName = (text) => {
             let name = unifySimple(text);
             
-            // sus4を一時的に保護
-            name = name.replace(/sus4/g, "TEMP_SUS4");
+            // テンション部分のソートと置換
+            // ルートとクオリティ(m, maj等)を分離、残りの数字/記号部分を抽出
+            name = name.replace(/([0-9#b]+|\(.*\)|sus[0-9]+|add[0-9]+)/g, (match) => {
+                // テンション表記の正規化
+                let normalized = match.replace(/#4/g, "#11").replace(/add4/g, "add11");
+                
+                // sus4と数字(7, 5, 6含む)を分離してソート
+                const tokens = normalized.match(/sus[0-9]+|add[0-9]+|[#b]?[0-9]+/g) || [];
+                if (tokens.length > 1) {
+                    tokens.sort((a, b) => {
+                        const valA = parseInt(a.replace(/[^0-9]/g, '')) || 0;
+                        const valB = parseInt(b.replace(/[^0-9]/g, '')) || 0;
+                        return valA - valB;
+                    });
+                    return tokens.join('');
+                }
+                return normalized;
+            });
 
-            // add4/add6 の置換
-            name = name.replace(/add4/g, "add11").replace(/add6/g, "add13");
-
-            // #4, b6, 4, 6 の置換
-            name = name.replace(/#4/g, "#11").replace(/b6/g, "b13");
-            name = name.replace(/(?<=[A-G][#b]?)4/g, "11").replace(/(?<=[A-G][#b]?)6/g, "13");
-            name = name.replace(/6(?=\))/g, "13");
-
-            // sus4を復帰
-            name = name.replace(/TEMP_SUS4/g, "sus4");
-
-            return name.replace(/([0-9]|#|b|\(|\))+/g, (match) => `<sup>${match}</sup>`);
+            // 7, 5, 6 は上付きにせず、それ以外（9, 11, 13, sus等）を上付きにする
+            // 正規表現で、ルート音名の直後の 7, 5, 6 を除外してタグ付け
+            return name.replace(/([0-9#b(a-z]+)/g, (match, p1, offset) => {
+                // 文字列の先頭（ルート音のすぐ後ろ）にある 7, 5, 6 はそのまま
+                if (offset > 0 && /^[567]$/.test(match)) return match;
+                // それ以外の数字・記号・sus等は上付き
+                return `<sup>${match}</sup>`;
+            });
         };
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
