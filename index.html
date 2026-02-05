@@ -80,8 +80,8 @@
         const unifyChordName = (text) => {
             let name = unifySimple(text);
             
-            // アルファベット+数字、dim, sus, add などを一塊として最長一致で抽出
-            const regex = /^([A-G])([#b])?((?:dim7|dim|mM7|maj[0-9]{0,2}|min[0-9]{0,2}|m[0-9]{1,2}|[Mm][0-9]{0,2}|sus[24]{0,2}|add[0-9]{1,2}|69|7|6|5|4)*)(.*)/;
+            // 確定した正規表現
+            const regex = /^([A-G])([#b])?((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]+|add[0-9]+|[0-9]+)*)(.*)/;
             
             return name.replace(regex, (match, root, rootAcc, type, tension) => {
                 const r = root || "";
