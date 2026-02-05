@@ -51,19 +51,23 @@
         };
         const rawNotes = getRawNotes();
         const unifySimple = (text) => { if (!text) return ""; const dict = useSharps ? f2s : s2f; return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m); };
+        
         const unifyChordName = (text) => {
             if (!text) return "";
             let [mainPart, bassPart] = text.split('/');
-            let chord = Tonal.Chord.get(mainPart);
-            let rootName = chord.tonic || "";
-            let selectedChromas = selected.map(n => Tonal.Note.get(n).chroma);
-            let rootNote = Tonal.Note.get(rootName);
-            if (!rootNote.empty && !selectedChromas.includes(rootNote.chroma)) {
-                rootName = mainPart[0];
-                if (mainPart[1] === '#' || mainPart[1] === 'b') rootName += mainPart[1];
+            
+            let rootName = mainPart[0];
+            let remains = mainPart.substring(1);
+            if (remains.length > 0 && (remains[0] === '#' || remains[0] === 'b')) {
+                const potentialRoot = rootName + remains[0];
+                const selectedChromas = selected.map(n => Tonal.Note.get(n).chroma);
+                const chord = Tonal.Chord.get(mainPart);
+                if (selectedChromas.includes(Tonal.Note.get(potentialRoot).chroma) && chord.tonic === potentialRoot) {
+                    rootName = potentialRoot;
+                    remains = mainPart.substring(rootName.length);
+                }
             }
-            if (!rootName) { const m = mainPart.match(/^([A-G][#b]?)/); if (m) rootName = m[1]; }
-            let remains = mainPart.substring(rootName.length);
+
             const rUnified = unifySimple(rootName);
             const rm = rUnified.match(/^([A-G])([#b])?/);
             const rStr = rm ? `${rm[1]}${rm[2] ? `<sup>${rm[2]}</sup>` : ""}` : unifySimple(rootName);
@@ -83,12 +87,12 @@
             }
             return `${rStr}${t}${ts ? `<sup>${ts}</sup>` : ""}${fb}`;
         };
+
         const getChroma = (n) => Tonal.Note.get(n).chroma;
         const playChord = (rootName) => {
             if (!audioCtx) return;
             activeOscillators.forEach(osc => { try { osc.stop(); } catch (e) {} });
             activeOscillators = [];
-            const rootFreq = Tonal.Note.freq(rootName + "3");
             const rc = getChroma(rootName);
             selected.forEach(n => {
                 const semitones = (getChroma(n) - rc + 12) % 12;
@@ -119,11 +123,13 @@
             finalCandidates = [...new Set(finalCandidates)];
             if (finalCandidates.length > 1) finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
             if (!activeAnalysisRoot || !finalCandidates.some(c => getChroma(Tonal.Chord.get(c.split('/')[0]).tonic) === getChroma(activeAnalysisRoot))) {
-                const firstRoot = Tonal.Chord.get(finalCandidates[0].split('/')[0]).tonic;
+                const firstCandidate = finalCandidates[0].split('/')[0];
+                const firstRoot = Tonal.Chord.get(firstCandidate).tonic || firstCandidate[0];
                 activeAnalysisRoot = rawNotes.find(n => getChroma(n) === getChroma(firstRoot)) || firstRoot;
             }
             out.innerHTML = finalCandidates.map(c => {
-                const ct = Tonal.Chord.get(c.split('/')[0]).tonic;
+                const main = c.split('/')[0];
+                const ct = Tonal.Chord.get(main).tonic || main[0];
                 const r = rawNotes.find(n => getChroma(n) === getChroma(ct)) || ct;
                 const isActive = getChroma(r) === getChroma(activeAnalysisRoot);
                 return `<div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${r}'); playChord('${r}')"><div class="chord-name">${unifyChordName(c)}</div></div>`;
