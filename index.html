@@ -53,9 +53,8 @@
         const unifySimple = (text) => { if (!text) return ""; const dict = useSharps ? f2s : s2f; return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m); };
         
         const unifyChordName = (text) => {
-            if (!text) return "";
+            if (!text) return { html: "", root: "" };
             let [mainPart, bassPart] = text.split('/');
-            
             let rootName = mainPart[0];
             let remains = mainPart.substring(1);
             if (remains.length > 0 && (remains[0] === '#' || remains[0] === 'b')) {
@@ -67,7 +66,6 @@
                     remains = mainPart.substring(rootName.length);
                 }
             }
-
             const rUnified = unifySimple(rootName);
             const rm = rUnified.match(/^([A-G])([#b])?/);
             const rStr = rm ? `${rm[1]}${rm[2] ? `<sup>${rm[2]}</sup>` : ""}` : unifySimple(rootName);
@@ -85,7 +83,7 @@
                 const bm = bu.match(/^([A-G])([#b])?/);
                 fb = bm ? `/${bm[1]}${bm[2] ? `<sup>${bm[2]}</sup>` : ""}` : `/${bu}`;
             }
-            return `${rStr}${t}${ts ? `<sup>${ts}</sup>` : ""}${fb}`;
+            return { html: `${rStr}${t}${ts ? `<sup>${ts}</sup>` : ""}${fb}`, root: rootName };
         };
 
         const getChroma = (n) => Tonal.Note.get(n).chroma;
@@ -122,17 +120,17 @@
             });
             finalCandidates = [...new Set(finalCandidates)];
             if (finalCandidates.length > 1) finalCandidates = finalCandidates.filter(c => !c.includes('5/'));
-            if (!activeAnalysisRoot || !finalCandidates.some(c => getChroma(Tonal.Chord.get(c.split('/')[0]).tonic) === getChroma(activeAnalysisRoot))) {
-                const firstCandidate = finalCandidates[0].split('/')[0];
-                const firstRoot = Tonal.Chord.get(firstCandidate).tonic || firstCandidate[0];
-                activeAnalysisRoot = rawNotes.find(n => getChroma(n) === getChroma(firstRoot)) || firstRoot;
+            
+            // 重要：ここで unifyChordName の判定結果を activeAnalysisRoot に反映させる
+            const candidateInfo = finalCandidates.map(c => ({ original: c, info: unifyChordName(c) }));
+            if (!activeAnalysisRoot || !candidateInfo.some(x => getChroma(x.info.root) === getChroma(activeAnalysisRoot))) {
+                activeAnalysisRoot = rawNotes.find(n => getChroma(n) === getChroma(candidateInfo[0].info.root)) || candidateInfo[0].info.root;
             }
-            out.innerHTML = finalCandidates.map(c => {
-                const main = c.split('/')[0];
-                const ct = Tonal.Chord.get(main).tonic || main[0];
-                const r = rawNotes.find(n => getChroma(n) === getChroma(ct)) || ct;
+
+            out.innerHTML = candidateInfo.map(x => {
+                const r = rawNotes.find(n => getChroma(n) === getChroma(x.info.root)) || x.info.root;
                 const isActive = getChroma(r) === getChroma(activeAnalysisRoot);
-                return `<div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${r}'); playChord('${r}')"><div class="chord-name">${unifyChordName(c)}</div></div>`;
+                return `<div class="chord-item ${isActive ? 'active' : ''}" onclick="setAnalysisRoot('${r}'); playChord('${r}')"><div class="chord-name">${x.info.html}</div></div>`;
             }).join('');
             render();
         };
