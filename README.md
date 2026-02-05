@@ -17,7 +17,7 @@ Playback uses just intonation only for major/minor thirds; all others use equal 
 
 It clearly shows how the impression changes based on the root note selection, even when the constituent notes are the same.
 
-・For the 7th, since just intonation is rarely used in performance, it uses equal temperament.
+・For the 7th note, since just intonation is rarely used in performance, it uses equal temperament.
 
 ・If the bass note is not included in the chord, it will be added for playback.
 
