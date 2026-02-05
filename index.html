@@ -77,48 +77,56 @@
             return text.replace(/C#|D#|F#|G#|A#|Db|Eb|Gb|Ab|Bb/g, m => dict[m] || m);
         };
 
-        const unifyChordName = (text) => {
-            const chord = Tonal.Chord.get(text);
-            if (chord.empty) return unifySimple(text);
+const unifyChordName = (text) => {
+    const chord = Tonal.Chord.get(text);
+    if (chord.empty) return unifySimple(text);
 
-            const root = unifySimple(chord.tonic);
-            let remains = chord.aliases[0] || "";
+    const root = unifySimple(chord.tonic);
+    let remains = chord.aliases[0] || "";
 
-            // # か b が直前にある数字は基本属性(t)に含めない。これで b9 が一塊で tension(ts) へ流れる
-            const typeRegex = /^((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]*|add[0-9]+|(?<![#b])[0-9]+)*)(.*)/;
+    // 第3グループ(維持)から「#b付きの数字」を徹底的に排除。
+    // [0-9]+ は「単独の数字」のみを吸い取るようにし、記号付きは第4グループ(tens)へ流す。
+    const typeRegex = /^((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]*|add[0-9]+)*)(.*)/;
+    
+    // さらに、もし remains の先頭が数字なら、それを type として切り出す
+    // 例: remains が "9sus" なら "9" が type, "sus" が tension になるのを防ぐため、
+    // 数字も明示的に typeRegex に含めます（ただし #b がついていないこと）
+    const finalRegex = /^((?:dim7*|mM7|maj[0-9]+|min[0-9]*|m[0-9]+|[Mm][0-9]*|sus[24]*|add[0-9]+|[0-9]+)*)(.*)/;
+
+    // A b9 sus のケースでは、先頭が "b9" なので、finalRegex のどの項目にもマッチせず、
+    // "b9sus" 全体が tension グループに回ります。
+    return remains.replace(finalRegex, (match, type, tension) => {
+        const t = type || "";
+        let tens = tension || "";
+
+        let formattedBass = "";
+        if (text.includes('/')) {
+            const bassPart = text.split('/')[1];
+            const bRoot = unifySimple(Tonal.Note.get(bassPart).name || bassPart);
+            const bMatch = bRoot.match(/^([A-G])([#b])?/);
+            if (bMatch) {
+                formattedBass = "/" + bMatch[1] + (bMatch[2] ? `<sup>${bMatch[2]}</sup>` : "");
+            } else {
+                formattedBass = "/" + bRoot;
+            }
+        }
+
+        if (tens) {
+            tens = tens.replace(/#4/g, "#11").replace(/add4/g, "add11").replace(/add6/g, "add13");
+            // b9 などを一塊で抽出。ここが重要です。
+            const tokens = tens.match(/sus[0-9]*|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [tens];
+            const ts = `<sup>${tokens.join('')}</sup>`;
             
-            return remains.replace(typeRegex, (match, type, tension) => {
-                const t = type || "";
-                let tens = tension || "";
+            const rootMatch = root.match(/^([A-G])([#b])?/);
+            const ra = rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : "";
+            return `${rootMatch[1]}${ra}${t}${ts}${formattedBass}`;
+        }
 
-                let formattedBass = "";
-                if (text.includes('/')) {
-                    const bassPart = text.split('/')[1];
-                    const bRoot = unifySimple(Tonal.Note.get(bassPart).name || bassPart);
-                    const bMatch = bRoot.match(/^([A-G])([#b])?/);
-                    if (bMatch) {
-                        formattedBass = "/" + bMatch[1] + (bMatch[2] ? `<sup>${bMatch[2]}</sup>` : "");
-                    } else {
-                        formattedBass = "/" + bRoot;
-                    }
-                }
-
-                if (tens) {
-                    tens = tens.replace(/#4/g, "#11").replace(/add4/g, "add11").replace(/add6/g, "add13");
-                    // テンション部分の抽出。b9 などを一塊でキャッチ
-                    const tokens = tens.match(/sus[0-9]*|add[0-9]+|[#b]?[0-9]+|\(.*\)/g) || [tens];
-                    const ts = `<sup>${tokens.join('')}</sup>`;
-                    
-                    const rootMatch = root.match(/^([A-G])([#b])?/);
-                    const ra = rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : "";
-                    return `${rootMatch[1]}${ra}${t}${ts}${formattedBass}`;
-                }
-
-                const rootMatch = root.match(/^([A-G])([#b])?/);
-                const ra = rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : "";
-                return `${rootMatch[1]}${ra}${t}${formattedBass}`;
-            });
-        };
+        const rootMatch = root.match(/^([A-G])([#b])?/);
+        const ra = rootMatch[2] ? `<sup>${rootMatch[2]}</sup>` : "";
+        return `${rootMatch[1]}${ra}${t}${formattedBass}`;
+    });
+};
 
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
