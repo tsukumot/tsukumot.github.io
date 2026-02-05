@@ -80,13 +80,9 @@
         const unifyChordName = (text) => {
             let name = unifySimple(text);
             
-            // テンション部分のソートと置換
-            // ルートとクオリティ(m, maj等)を分離、残りの数字/記号部分を抽出
+            // テンション部分の正規化とソート
             name = name.replace(/([0-9#b]+|\(.*\)|sus[0-9]+|add[0-9]+)/g, (match) => {
-                // テンション表記の正規化
                 let normalized = match.replace(/#4/g, "#11").replace(/add4/g, "add11");
-                
-                // sus4と数字(7, 5, 6含む)を分離してソート
                 const tokens = normalized.match(/sus[0-9]+|add[0-9]+|[#b]?[0-9]+/g) || [];
                 if (tokens.length > 1) {
                     tokens.sort((a, b) => {
@@ -99,15 +95,20 @@
                 return normalized;
             });
 
-            // 7, 5, 6 は上付きにせず、それ以外（9, 11, 13, sus等）を上付きにする
-            // 正規表現で、ルート音名の直後の 7, 5, 6 を除外してタグ付け
-            return name.replace(/([0-9#b(a-z]+)/g, (match, p1, offset) => {
-                // 文字列の先頭（ルート音のすぐ後ろ）にある 7, 5, 6 はそのまま
-                if (offset > 0 && /^[567]$/.test(match)) return match;
-                // それ以外の数字・記号・sus等は上付き
-                return `<sup>${match}</sup>`;
+            // 表示の成形：ルート部分とサフィックスを慎重に分離
+            // p1: ルート音(Bb等) + 基本属性(m, maj, 7, 6, 5等)
+            // p2: それ以降のテンション
+            return name.replace(/^([A-G][#b]?(?:maj|min|m|M|7|6|5)?)(.*)/, (match, p1, p2) => {
+                if (!p2) return p1;
+                // 分数コードの「/」以降は上付きにしないための処理
+                if (p2.includes('/')) {
+                    const parts = p2.split('/');
+                    return `${p1}<sup>${parts[0]}</sup>/${parts[1]}`;
+                }
+                return `${p1}<sup>${p2}</sup>`;
             });
         };
+
 
         const getChroma = (note) => Tonal.Note.get(note).chroma;
 
